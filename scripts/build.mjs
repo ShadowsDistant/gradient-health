@@ -328,10 +328,14 @@ export const APP_SCRIPTS = [
 // page (other screens share their classes). src/ui/lazy.js has the small stand-ins that load a part
 // the first time it's used, and warms the likely ones once the first frame is drawn.
 export const APP_CHUNKS = [
+  // Motion for particular moments (a picture travelling into its sheet, rings filling, the workout
+  // player's set, rest and finish): nothing the first frame needs, and nothing of it plays at launch.
+  { name: 'moments', scripts: ['src/ui/moments.js'] },
   // Set-up: only someone who isn't set up yet, or who edits their answers, needs it.
-  { name: 'setup', scripts: ['src/ui/onboarding.js'] },
+  // (Why this plan's words, src/explain.js, come with it and with the review: either loads them.)
+  { name: 'setup', scripts: ['src/explain.js', 'src/ui/onboarding.js'] },
   // The AI check of the plan, and Why this plan.
-  { name: 'review', scripts: ['src/planreview.js', 'src/ui/review.js'] },
+  { name: 'review', scripts: ['src/explain.js', 'src/planreview.js', 'src/ui/review.js'] },
   // How it works: the rules behind the plan and their research.
   { name: 'science', scripts: ['src/data/science.js', 'src/ui/science.js'] },
   // A badge's share image.
@@ -352,7 +356,13 @@ export const APP_CHUNKS = [
   // Your plans' screens and sheets: the Plans page, a plan's page, the exercise picker, New plan,
   // sharing and Build me a plan. The Plan tab's banner, the move pictures and links to a shared plan
   // are in the page (src/ui/customplan.js), with the stand-ins that load this, or warm it after launch.
-  { name: 'planUi', scripts: ['src/ui/planbuilder.js'] },
+  // The plan code comes with it (its move numbers, then its reader and writer): GH.customPlan.decode()
+  // loads this part before it reads one. Build me a plan's logic (src/planbuild.js) too.
+  { name: 'planUi', scripts: ['src/data/plancode-moves.js', 'src/plancode.js', 'src/planbuild.js', 'src/ui/planbuilder.js'] },
+  // Who this is, for a model (GH.person): what the app knows about the person and what they do, in
+  // words, for Claude's summary, the on-device coach's brief, the plan review and Build me a plan.
+  // Each loads it before it writes a request (GH.ai.who), and it warms after launch.
+  { name: 'person', scripts: ['src/person.js'] },
 ];
 
 // Heavy parts that load only when they're used (the 3D figure, the on-device model runtime, the
@@ -447,12 +457,15 @@ export async function figureId(src = read) {
 
 // The page a shared plan's link opens in a browser (docs/p/index.html, served by GitHub Pages from
 // /docs): the plan from the link's #fragment, the move names and the QR encoder inline, and a
-// content security policy that allows exactly its one script. No other requests, no trackers.
+// content security policy that allows exactly its one script. No other requests, no trackers. Each
+// move also carries its plan code number (src/data/plancode-moves.js), for the page's own writer of
+// the plan's code.
 export function sharePage() {
   globalThis.GH = globalThis.GH || {};
-  for (const p of APP_SCRIPTS.filter((x) => /^src\/data\/moves/.test(x))) new Function(read(p))();
+  for (const p of APP_SCRIPTS.filter((x) => /^src\/data\/moves/.test(x)).concat('src/data/plancode-moves.js')) new Function(read(p))();
+  const numbers = globalThis.GH.PLAN_CODE_MOVES;
   const moves = {};
-  for (const [id, m] of Object.entries(globalThis.GH.moves.MOVES)) if (m && m.name) moves[id] = [m.name, m.group || '', m.timed ? 1 : 0];
+  for (const [id, m] of Object.entries(globalThis.GH.moves.MOVES)) if (m && m.name) moves[id] = [m.name, m.group || '', m.timed ? 1 : 0, numbers.indexOf(id)];
   let html = read('src/share-page.html')
     .replace('/*@QR*/', () => safeJs(read('src/qr.js')))
     .replace('/*@MOVES*/{}', () => safeJs(JSON.stringify(moves)));

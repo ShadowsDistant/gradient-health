@@ -48,15 +48,18 @@ check('the trained muscles are coloured, the untrained ones (calves at home) are
 check('the most trained muscle is at the top of the scale', m.regions.some((r) => r.l === 5));
 const top = m.regions.find((r) => r.l === 5), none = m.regions.find((r) => r.l === 0), low = m.regions.find((r) => r.l === 1 || r.l === 2);
 check('the scale runs from grey to the accent', top && none && top.fill !== none.fill && (!low || (low.fill !== top.fill && low.fill !== none.fill)), [top && top.fill, low && low.fill, none && none.fill]);
-check('a takeaway names the most and least trained', /^Most: .+ · Least: calves$/.test(m.take), m.take);
+// (The least trained has no sets: the calves at home, or the obliques, since 1.15 gives abs as a goal
+// on short days the moves that load the front of the abs, as test/body.mjs says.)
+const least = (m.take.match(/ · Least: (\w+)$/) || [])[1];
+check('a takeaway names the most and least trained, one with no sets', /^Most: .+ · Least: (calves|obliques)$/.test(m.take) && m.regions.filter((r) => r.m === least).every((r) => r.l === 0), m.take);
 check('the legend reads less to more, with no sets', /Less\s*More\s*No sets/.test(m.legend), m.legend);
 check('a list of the same 17 muscles for screen readers', m.list.length === 17 && m.list.some((t) => /^Chest: [\d.]+ sets?, \d+% of your training$/.test(t)) && m.list.includes('Calves: no sets'), m.list.slice(0, 4));
 const svgHidden = await page.evaluate(() => [...document.querySelectorAll('#screen .bm-fig')].every((s) => s.getAttribute('aria-hidden') === 'true'));
 check('the drawing itself is hidden from screen readers', svgHidden);
-check('the least trained muscle has a "Train … more" link', (await page.evaluate(() => { const b = document.querySelector('#screen .bm-card [data-act="tailorPlan"]'); return b && b.getAttribute('data-arg'); })) === 'calves');
+check('the least trained muscle has a "Train … more" link', (await page.evaluate(() => { const b = document.querySelector('#screen .bm-card [data-act="tailorPlan"]'); return b && b.getAttribute('data-arg'); })) === least);
 await page.click('#screen .bm-card [data-act="tailorPlan"]');
 await settle(900);
-check('which opens Tailor my plan asking for that muscle', (await page.evaluate(() => { const q = document.querySelector('dialog[open] #tailorQ'); return q && q.value; })) === 'Train my calves more');
+check('which opens Tailor my plan asking for that muscle', (await page.evaluate(() => { const q = document.querySelector('dialog[open] #tailorQ'); return q && q.value; })) === `Train my ${least} more`);
 await page.evaluate(() => window.GH.ui.closeSheets());
 await settle(700);
 
@@ -123,9 +126,9 @@ section('Train … more');
 await page.evaluate(() => { window.GH.ui.act.tailorPlan = (el) => { window.__tailor = el.getAttribute('data-arg'); }; window.GH.ui.render(); });
 await settle(600);
 const more = await page.evaluate(() => { const b = document.querySelector('#screen .bm-card [data-act="tailorPlan"]'); return b && { text: b.textContent.trim(), arg: b.dataset.arg }; });
-check('with Tailor my plan there, the hero offers to train the least trained muscle', more && more.arg === 'calves' && more.text === 'Train calves more', more);
+check('with Tailor my plan there, the hero offers to train the least trained muscle', more && more.arg === least && more.text === `Train ${least} more`, more);
 await page.click('#screen .bm-card [data-act="tailorPlan"]');
-check('and hands it the muscle', await page.evaluate(() => window.__tailor === 'calves'));
+check('and hands it the muscle', await page.evaluate(() => window.__tailor) === least);
 await page.click('#screen .bm-view[data-view="back"] .bm-m[data-muscle="glutes"] path');
 await settle(900);
 await page.click('dialog.mu-sheet [data-act="tailorPlan"]');

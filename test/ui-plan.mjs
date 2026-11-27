@@ -346,7 +346,7 @@ section('What the week means');
 await page.click('#screen .pw-info');
 await settle(900);
 const sheet = await page.evaluate(() => { const d = document.querySelector('dialog.rf-sheet[open]'); return d ? { title: d.querySelector('.rf-sheet-title').textContent, marks: d.querySelectorAll('.pw-key li').length, text: d.textContent } : null; });
-check('the info button explains the phase and the marks', sheet && sheet.title === 'Full volume' && sheet.marks === 5 && /deload/.test(sheet.text), JSON.stringify(sheet && { title: sheet.title, marks: sheet.marks }));
+check('the info button explains the phase and the marks', sheet && sheet.title === 'Full volume' && sheet.marks === 5 && /one week in five is lighter/.test(sheet.text), JSON.stringify(sheet && { title: sheet.title, marks: sheet.marks }));
 await shot(page, '07-info');
 await page.evaluate(() => window.GH.ui.closeSheets());
 await settle(900);
@@ -473,12 +473,34 @@ section('A deload week');
 }));
 await page.click('.rf-tab[data-tab="plan"]');
 await settle(900);
-check('the summary says so in plain words', /Week 6 · Deload week/.test((await page.locator('#screen .pw-sub').innerText()).replace(/\s+/g, ' ')));
+check('the summary says so in plain words', /Week 6 · Lighter week/.test((await page.locator('#screen .pw-sub').innerText()).replace(/\s+/g, ' ')));
 await page.click('#screen .pw-info');
 await settle(900);
 const deload = await page.evaluate(() => document.querySelector('dialog.rf-sheet[open]').textContent);
 check('and the info sheet explains it', /40% fewer sets/.test(deload) && /back to full volume/.test(deload), deload.slice(0, 160));
 await shot(page, '14-deload');
+await ctx.close();
+
+section('Why this plan says what\'s personal');
+// 1.15: the planner's own reasons lead with the person's answers it used (GH.optimizer.personalFacts):
+// the goals and their days, the time, the dumbbells at their size, eating. (By week 6 this person's
+// left arm has caught up at its tests, so there's no line for it: test/optimizer.mjs has one.)
+({ ctx, page, settle } = await openApp('2026-10-19T08:10:00', () => {
+  const S = window.GH.store.load();
+  S.profile.eats = { protein: 'low', produce: null };
+  window.GH.store.save(S);
+}));
+await page.click('.rf-tab[data-tab="plan"]');
+await settle(900);
+await page.evaluate(() => window.GH.ui.act.whyPlan());
+await page.waitForSelector('dialog.why-sheet[open] .wy-reasons', { timeout: 8000 });
+await settle(900);
+const whyLines = await page.evaluate(() => [...document.querySelectorAll('dialog.why-sheet[open] .wy-reasons > li')].map((li) => li.textContent.trim()));
+const facts = await page.evaluate(() => window.GH.optimizer.personalFacts(window.GH.ui.S, window.GH.ui.today()).map((f) => f.text));
+check('its reasons lead with the answers the plan used, each one shown', facts.length >= 4 && facts.every((f) => whyLines.includes(f)), { facts, whyLines });
+check('the goals and their days, the time, the dumbbells at your size and eating', ['Your goals come first: ', 'exercises a session', /Your heaviest weight is a 15 lb dumbbell\. At 151 lb it's right for curls/, 'You said protein-rich food is rare for you'].every((x) => whyLines.some((l) => (typeof x === 'string' ? l.includes(x) : x.test(l)))), whyLines);
+check('in plain words: no dashes or exclamation marks', whyLines.every((l) => !/[—–!]/.test(l)), whyLines);
+await shot(page, '15-why');
 await ctx.close();
 
 section('Days picked set the workouts a week');

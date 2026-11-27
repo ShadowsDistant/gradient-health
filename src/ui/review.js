@@ -158,6 +158,7 @@
     </li>`;
   }
   const applyLabel = (n, all) => (n === 0 ? 'Pick a change to apply' : n === all ? (n === 1 ? 'Apply this change' : `Apply all ${n}`) : `Apply ${n} selected`);
+  const listWords = (a) => (a.length <= 1 ? a.join('') : `${a.slice(0, -1).join(', ')} and ${a[a.length - 1]}`);
   function resultBody(st) {
     const r = st.review;
     const n = r.items.filter((x) => st.picked.has(x.id)).length;
@@ -165,7 +166,8 @@
     const head = `<div class="rv-head" data-key="head">
       <span class="rv-by" data-engine="${U.esc(r.engine)}">${U.icon(r.engine === 'claude' ? 'sparkle' : r.engine === 'device' ? 'chip' : 'layers', 'sm')}${U.esc(r.engine === 'app' ? 'Checked by the planner' : `Checked by ${engineName(r.engine)}${ago ? ` · ${ago}` : ''}`)}</span>
       ${r.note ? `<p class="t-callout rv-note">${U.esc(r.note)}</p>` : ''}
-      ${r.cut ? '<p class="t-footnote rf-muted rv-cut">Left out a line with a number that isn\'t in your data.</p>' : ''}
+      ${r.looked && r.looked.length ? `<p class="t-footnote rf-muted rv-looked">${U.esc(`It looked at next week's plan with ${listWords(r.looked.slice(0, 6))}.`)}</p>` : ''}
+      ${r.cut ? '<p class="t-footnote rf-muted rv-cut">Left out a line with a number that isn\'t in your data, or advice the coach doesn\'t give.</p>' : ''}
     </div>`;
     const empty = !r.items.length ? `<div class="card rv-empty" data-key="empty">${U.icon('check-circle')}<p class="t-headline">${r.rejected.length ? 'Nothing to apply' : 'Your plan already fits'}</p><p class="t-callout rf-muted">${r.rejected.length ? 'Its suggestions didn\'t pass your plan\'s checks (reasons below).' : 'The coach found nothing worth changing.'}</p></div>` : '';
     const cards = r.items.length ? `<ul class="rv-cards" data-key="cards">${r.items.map((it) => card(it, st.picked.has(it.id))).join('')}</ul>` : '';
@@ -343,7 +345,9 @@
     const S = U.S, day = U.today();
     const items = rv.review.items.filter((x) => rv.picked.has(x.id));
     if (!items.length) { U.haptic('deny'); return; }
-    const res = R().apply(S, items, day, { engine: rv.review.engine, source: rv.source });
+    // (The ones offered and left unticked are kept with the changes: the next plan a model builds
+    // or checks is told what was turned down.)
+    const res = R().apply(S, items, day, { engine: rv.review.engine, source: rv.source, declined: rv.review.items.filter((x) => !rv.picked.has(x.id)).map((x) => x.title) });
     if (!res.applied.length) { U.toast('Nothing was applied', 'caution', res.skipped.length ? res.skipped[0].reason : ''); return; }
     // A review's done with once it's applied: the next check looks at the plan as it is now.
     S.ai.review = null;

@@ -199,9 +199,12 @@ const res = await ev(() => {
     cards: [...el.querySelectorAll('.rv-card')].map((c) => ({ title: c.querySelector('.rf-list-title').textContent, why: (c.querySelector('.rf-list-sub') || {}).textContent || '', diff: [...c.querySelectorAll('.rv-diff li')].map((l) => l.textContent), score: c.querySelector('.rv-score').textContent, on: c.querySelector('input[role="switch"]').checked })),
     not: [...el.querySelectorAll('.rv-not li')].map((l) => ({ title: l.querySelector('.rv-not-title').textContent, why: l.querySelector('.rv-not-why').textContent })),
     apply: (el.querySelector('[data-act="reviewApply"]') || {}).textContent || '',
+    looked: (el.querySelector('.rv-looked') || {}).textContent || '',
+    lookedKept: r ? r.looked : null,
   };
 });
 check('it says who checked it, and its note', /Checked by the on-device coach/.test(res.by) && res.note === 'Your plan fits your goals.', res);
+check('and what it looked at about you besides the plan, from the facts it was given', /^It looked at next week's plan with your goals, your schedule, your equipment(, [a-z' ]+)* and [a-z' ]+\.$/.test(res.looked) && res.lookedKept && res.lookedKept.length >= 3 && res.looked.includes(res.lookedKept[res.lookedKept.length > 6 ? 5 : res.lookedKept.length - 1]), [res.looked, res.lookedKept]);
 check('a card for each change that passed, with its title, why, what it changes and the score in words', res.cards.length >= 1 && res.cards.every((c) => c.title && c.why && c.diff.length && /(\d+ points? (higher|lower)|About as good a fit)/.test(c.score) && !/out of 100/.test(c.score)), res.cards);
 check('each switch starts on', res.cards.every((c) => c.on) && /^Apply (this change|all \d)/.test(res.apply), res.apply);
 check('what wasn\'t applied, and why: the split it already has', res.not.some((x) => x.title === 'Keep the planner\'s split' && /already picks your split/.test(x.why)), res.not);

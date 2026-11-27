@@ -28,7 +28,7 @@ Training, food and health in one private Android app, with a coach that runs on 
 
 **It fits your body, not just your goals.** Your age, sore joints and weaker side change the plan. So do health conditions like osteoporosis, type 2 diabetes, high blood pressure, arthritis and back pain. From 60, leg days get fast reps and every muscle trains twice a week, and wheelchair users get a seated plan.
 
-**A 3D figure shows every move.** 296 exercises for home or the gym, each at the right tempo with the working muscles lit. No equipment? A chair, a wall and a towel go a long way.
+**A 3D figure shows every move.** 302 exercises for home or the gym, each at the right tempo with the working muscles lit. No equipment? A chair, a wall and a towel go a long way.
 
 **A coach on your phone.** Ask about your numbers, or change your plan by saying what you want: "more legs, my knees hurt, 20 minutes". The AI runs offline, and every answer is checked against your own data. Or use Claude with your own API key and spending limits.
 
@@ -49,7 +49,7 @@ Training, food and health in one private Android app, with a coach that runs on 
 |---|---|
 | **Today** | Today's workout, and what the coach changed and why |
 | **Plan** | Your week, why it's built that way, and an AI check you approve |
-| **Your plans** | Build your own from pictures of every move or a ready-made split, or ask the coach, and share it with a QR code |
+| **Your plans** | Build your own from pictures of every move or a ready-made split, or ask the coach, and share it with a short code, a QR code or a link |
 | **Activities** | Runs, walks, hikes and rides with GPS, auto-pause and spoken splits |
 | **Food** | Calories and macros by meal, with a barcode scanner |
 | **Health** | Sleep, steps, heart rate and weight from Health Connect |

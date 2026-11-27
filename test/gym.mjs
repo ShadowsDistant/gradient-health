@@ -43,9 +43,11 @@ check('strength goal: main lifts in the 4-8 range', !bench || (bench.lo <= 4 || 
 
 section('Double progression');
 S = person({ where: 'gym', gym: B.gymPreset('full', 'kg'), goals: ['chest', 'arms'] });
-const days = workoutDays(S, D0, 12);
+// (Four weeks for real, day by day: the days asked for up front were the next 12 in a row, which is
+// six sessions in under two weeks. Since 1.15 a goal muscle's two exercises take turns over its
+// days, so the bench press comes round four times in those, one short of its first weight jump.)
 const first = {};
-for (const d of days) {
+for (let d = D0; d < D0 + 28; d++) {
   train(S, d, (it) => (it.timed ? null : (it.curTarget || it.target || it.reps)), '3');
   for (const [fam, st] of Object.entries(S.prog)) if (st.gym && st.loads) for (const [id, kg] of Object.entries(st.loads)) if (first[id] == null) first[id] = kg;
 }

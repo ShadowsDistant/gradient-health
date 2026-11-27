@@ -2,7 +2,8 @@
  * first time one is wanted; src/ui/customplan.js has the rest, and stands in until this is in): the
  * Plans page, a plan's page where it's built like a playlist (add exercises, set sets and reps, drag
  * to reorder, this week by muscle), the exercise picker, one exercise, New plan with ready-made
- * plans, sharing as a QR code or a link, a shared plan's preview, Build me a plan with the coach,
+ * plans, sharing as a plan code, a QR code or a link, adding a shared plan by its code, a shared
+ * plan's preview, Build me a plan with the coach,
  * and Improve.
  */
 (function (G) {
@@ -65,13 +66,13 @@
           <div class="cp-make" data-key="make">
             ${makeTile('cpNew', 'plus', 'indigo', 'Build your own', 'Pick exercises like songs for a playlist')}
             ${makeTile('cpBuild', 'sparkle', 'violet', 'Ask the coach', 'Say what you want, get a plan')}
-            ${makeTile('cpScan', 'scan', 'teal', 'Add a shared plan', 'Scan a code or paste a link')}
+            ${makeTile('cpScan', 'scan', 'teal', 'Add a shared plan', 'Enter a code or scan one')}
           </div>
         </div>
         <h2 class="sec-title t-title-3">Saved plans</h2>
         <div class="section">
           ${plans.length ? `<ul class="cp-plans" data-key="plans">${plans.map((p) => planCard(S, p)).join('')}</ul>`
-    : `<div class="card cp-empty" data-key="empty"><span class="cp-empty-ico" aria-hidden="true">${U.icon('list')}</span><p class="t-headline">No plans yet</p><p class="t-callout rf-muted">Share one and anyone with Gradient Health can scan it.</p></div>`}
+    : `<div class="card cp-empty" data-key="empty"><span class="cp-empty-ico" aria-hidden="true">${U.icon('list')}</span><p class="t-headline">No plans yet</p><p class="t-callout rf-muted">Plans you build, or add from a friend, are kept here.</p></div>`}
         </div>`;
     },
     after(screen) { drawThumbs(screen); },
@@ -197,6 +198,7 @@
       </div>
       <input class="cp-day-title" id="cpDay${di}" type="text" maxlength="${C().LIMITS.title}" value="${U.esc(d.title)}" placeholder="${U.esc(d.items.length ? C().titleFrom(d.items) : 'Name this day')}" aria-label="${U.esc(`Day ${di + 1} name`)}" data-on="cpDayTitle" data-arg="${di}" data-limit="day" enterkeyhint="done">
       ${groups.length ? `<div class="pw-tags" aria-label="Muscles">${groups.map((g) => `<span class="pw-tag" style="--c:${hue(g)}">${U.esc(groupName(g))}</span>`).join('')}</div>` : ''}
+      ${d.why ? `<p class="t-footnote rf-muted cp-day-why" data-key="why">${U.esc(d.why)}</p>` : ''}
       ${folded ? `<button type="button" class="cp-day-sum cp-press" data-act="cpDayFold" data-arg="${di}" data-key="sum"><span class="t-footnote rf-muted">${U.esc(`${U.plural(names.length, 'exercise')}: ${names.length > 3 ? `${names.slice(0, 3).map((n, i) => (i ? inSentence(n) : n)).join(', ')} and ${names.length - 3} more` : listWords(names.map((n, i) => (i ? inSentence(n) : n)))}`)}</span></button>`
     : d.items.length ? `<ul class="cp-exlist" data-day="${di}" data-key="list">${d.items.map((it, k) => exRow(plan, di, it, k, swaps.find((x) => x.day === di && x.i === k))).join('')}</ul>`
       : `<p class="t-callout rf-muted cp-day-empty" data-key="empty">No exercises yet.</p>`}
@@ -271,6 +273,7 @@
         <h1 class="rf-large-title cp-title">${U.esc(plan.name)}</h1>
         <div class="section">
           ${hero}
+          ${plan.why && plan.why.length ? `<div class="card cp-why-card" data-key="why"><p class="t-headline">Why this plan</p><ul class="cp-why">${plan.why.map((x) => `<li>${U.icon('check-circle', 'sm')}<span class="t-callout">${U.esc(x)}</span></li>`).join('')}</ul><p class="t-footnote rf-muted">From what the coach knew when it built this. Change an exercise and these go.</p></div>` : ''}
           <div class="card cp-names" data-key="names">
             <div class="rf-field"><label class="rf-field-label" for="cpName">Name</label><div class="rf-field-control"><input class="rf-input" id="cpName" type="text" maxlength="${C().LIMITS.name}" value="${U.esc(plan.name)}" data-on="cpName" data-limit="name" enterkeyhint="done" autocomplete="off"></div></div>
             <div class="rf-field"><label class="rf-field-label" for="cpNote">Note (optional)</label><div class="rf-field-control"><textarea class="rf-input" id="cpNote" rows="2" maxlength="${C().LIMITS.note}" placeholder="What it's for, how to do it" data-on="cpNote" data-limit="note">${U.esc(plan.note || '')}</textarea></div></div>
@@ -376,6 +379,7 @@
       di > 0 ? { act: 'cpDayMove', arg: `${di}:-1`, icon: 'arrow-up', label: 'Move day up' } : false,
       di < n - 1 ? { act: 'cpDayMove', arg: `${di}:1`, icon: 'arrow-down', label: 'Move day down' } : false,
       n < C().LIMITS.days ? { act: 'cpDayCopy', arg: String(di), icon: 'copy', label: 'Duplicate day' } : false,
+      plan.days[di].items.length ? { act: 'cpDayShare', arg: String(di), icon: 'share', label: 'Share this workout' } : false,
       n > 1 ? null : false,
       n > 1 ? { act: 'cpDayDelete', arg: String(di), icon: 'trash', label: 'Delete day', tone: 'critical' } : false,
     ], { label: `Day ${di + 1}${plan.days[di].title ? `: ${plan.days[di].title}` : ''}` });
@@ -403,6 +407,11 @@
       delete ui.wd[plan.id];
       U.haptic('copy');
       U.toast(`Day ${a + 1} duplicated`, 'positive', `It's day ${a + 2} now.`);
+    };
+    // One day on its own: the share sheet for a plan of just that day, named for it (not saved).
+    U.act.cpDayShare = (b) => {
+      const one = C().dayPlan(C().get(U.S, plan.id), Number(b.dataset.arg));
+      if (one && one.days.length) shareSheet(one, 'day');
     };
     U.act.cpDayDelete = (b) => {
       const a = Number(b.dataset.arg);
@@ -798,7 +807,9 @@
     };
     const soon = () => { if (!V.raf) V.raf = G.requestAnimationFrame(update); };
     // The list again (a filter, a search): from its top, rows enough for the screen at once.
-    const relist = () => {
+    // (A filter picked: the rows in sight then settle in, src/ui/moments.js. Not while typing.)
+    const relist = (typing) => {
+      if (!typing && vl && U.motion.refill) U.motion.refill(vl, '.cp-row');
       V.items = build();
       if (sc) sc.scrollTop = 0;
       if (!V.items.length) {
@@ -916,7 +927,7 @@
         st.q = q.value;
         clear.hidden = !q.value;
         clearTimeout(timer);
-        timer = setTimeout(relist, 90);
+        timer = setTimeout(() => relist(true), 90);
       });
       q.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); q.blur(); } });
       // A long press on a row opens its how-to (and its click doesn't then add it).
@@ -1041,7 +1052,7 @@
     const ctl = U.sheet({
       title: plan.name, size: 'fit',
       body: `<ul class="rf-list">
-        ${U.row({ icon: 'share', tone: 'violet', title: 'Share', sub: 'A QR code or a link', act: 'cpShare', arg: id, chevron: true })}
+        ${U.row({ icon: 'share', tone: 'violet', title: 'Share', sub: 'A code, a QR code or a link', act: 'cpShare', arg: id, chevron: true })}
         ${C().countItems(plan) ? U.row({ icon: 'sparkle', tone: 'violet', title: 'Improve it', sub: 'Claude or the on-device AI reworks it from your data', act: 'cpImproveFromMenu', arg: id, chevron: true }) : ''}
         ${U.row({ icon: 'copy', tone: 'indigo', title: 'Duplicate', sub: 'A copy to change', act: 'cpDup', arg: id })}
         ${U.row({ icon: 'trash', tone: 'rose', title: 'Delete plan', act: 'cpDelete', arg: id })}
@@ -1070,27 +1081,42 @@
   };
 
   /* ================================================================== sharing */
-  U.act.cpShare = async (el) => {
-    const top = U.topSheet();
-    if (top && !top.el.classList.contains('cp-share-sheet')) top.close('ok');
-    const S = U.S;
-    const plan = C().get(S, el.dataset.arg || U.route.arg);
+  U.act.cpShare = (el) => {
+    const plan = C().get(U.S, el.dataset.arg || U.route.arg);
     if (!plan) return;
     if (C().problems(plan).length) { U.haptic('deny'); U.toast('Finish the plan first', 'caution', C().problems(plan)[0]); return; }
+    shareSheet(plan, 'plan');
+  };
+  // A plan (or one workout of one, as a plan of a single day) to share three ways: a QR code and a
+  // link, both as 1.14 made them so an older app still reads one, and a plan code to copy into a
+  // message, read out or type (src/plancode.js).
+  function shareSheet(plan, what) {
+    const top = U.topSheet();
+    if (top && !top.el.classList.contains('cp-share-sheet')) top.close('ok');
     const name = firstName();
     const st = { withName: !!name, data: null, error: null };
-    const code = () => (st.data ? C().link(st.data) : '');
+    const link = () => (st.data ? C().link(st.data) : '');
+    let code = '';
+    try { code = C().toCode(plan); } catch (e) { if (G.console) G.console.error(e); }
+    // What the QR code and the link carry that the plan code doesn't.
+    const more = () => listWords([plan.note ? 'the note' : '', st.withName ? 'your first name' : ''].filter(Boolean));
     const body = () => `<div class="sheet-pad cp-share">
-        <div class="cp-qr" data-key="qr">${st.data ? GH.qr.svg(code(), { label: `A QR code for ${plan.name}`, cls: 'cp-qr-svg' }) : st.error ? `<p class="t-callout">${U.esc(st.error)}</p>` : '<span class="rf-spinner" data-size="sm"><i></i></span>'}</div>
+        <div class="cp-qr" data-key="qr">${st.data ? GH.qr.svg(link(), { label: `A QR code for ${plan.name}`, cls: 'cp-qr-svg' }) : st.error ? `<p class="t-callout">${U.esc(st.error)}</p>` : '<span class="rf-spinner" data-size="sm"><i></i></span>'}</div>
         <div class="cp-share-what"><p class="t-headline">${U.esc(plan.name)}</p><p class="t-footnote rf-muted">${U.esc(`${C().summary(plan)}${st.withName ? ` · from ${name}` : ''}`)}</p></div>
         <div class="cp-share-btns">
           <button type="button" class="rf-btn" data-variant="filled" data-size="lg" data-act="cpSendLink"${st.data ? '' : ' disabled'}>${U.icon('share')}Send a link</button>
-          <button type="button" class="rf-btn" data-size="lg" data-act="cpCopyLink"${st.data ? '' : ' disabled'}>${U.icon('copy')}Copy</button>
+          <button type="button" class="rf-btn" data-size="lg" data-act="cpCopyLink"${st.data ? '' : ' disabled'}>${U.icon('copy')}Copy link</button>
         </div>
+        ${code ? `<div class="cp-code-box" data-key="code">
+          <p class="cp-eyebrow" id="cpCodeLabel">Plan code</p>
+          <p class="cp-code" role="group" aria-labelledby="cpCodeLabel">${code.split('-').map((g) => `<span>${g}</span>`).join('')}</p>
+          <button type="button" class="rf-btn" data-variant="soft" data-act="cpCopyCode">${U.icon('copy')}Copy code</button>
+          <p class="t-footnote rf-muted">They enter it in Gradient Health, under Your plans.</p>
+        </div>` : ''}
         ${name ? `<ul class="rf-list">${U.sw(`Show my name (${name})`, st.withName, 'data-on="cpShareName"')}</ul>` : ''}
-        <p class="t-footnote rf-muted">They scan it in Gradient Health, under Your plans, or tap the link. It holds only the plan's name, days and exercises${st.withName ? ', and your first name' : ''}. Nothing goes through a server.</p>
+        <p class="t-footnote rf-muted">Or they scan the QR code there, or tap the link. The plan code holds the days, the exercises and the names you gave them.${more() ? ` The QR code and the link hold ${more()} too.` : ''} Nothing goes through a server.</p>
       </div>`;
-    const ctl = U.sheet({ title: 'Share this plan', size: 'fit', cls: 'cp-sheet cp-share-sheet', body: body() });
+    const ctl = U.sheet({ title: what === 'day' ? 'Share this workout' : 'Share this plan', size: 'fit', cls: 'cp-sheet cp-share-sheet', body: body() });
     const make = async () => {
       try { st.data = await C().encode(plan, { from: st.withName ? name : '' }); st.error = null; } catch (e) { st.error = 'Couldn\'t make the code. Try again.'; }
       if (!ctl.closed) ctl.update(body());
@@ -1100,8 +1126,8 @@
     U.on.cpShareName = (e2, ev, v) => { st.withName = !!v; make(); };
     U.act.cpSendLink = () => {
       if (!st.data) return;
-      const who = st.withName && name ? `${name} shared a workout plan with you` : 'Here\'s a workout plan for you';
-      const text = `${who}: ${plan.name} (${C().summary(plan)}). Open it in Gradient Health: ${code()}`;
+      const who = st.withName && name ? `${name} shared a ${what === 'day' ? 'workout' : 'workout plan'} with you` : `Here's a ${what === 'day' ? 'workout' : 'workout plan'} for you`;
+      const text = `${who}: ${plan.name} (${C().summary(plan)}). Open it in Gradient Health: ${link()}${code ? `\nOr enter this code there, under Your plans: ${code}` : ''}`;
       const ok = GH.platform && GH.platform.share(text);
       if (ok) U.haptic('send'); // (else the link is copied, with copy's)
       if (U.badgeEvent) U.badgeEvent('sharedPlan');
@@ -1109,19 +1135,111 @@
     };
     U.act.cpCopyLink = async () => {
       if (!st.data) return;
-      const ok = GH.platform && await GH.platform.copy(code());
+      const ok = GH.platform && await GH.platform.copy(link());
       if (ok) U.haptic('copy');
       U.toast(ok ? 'Link copied' : 'Couldn\'t copy the link', ok ? 'positive' : 'caution');
     };
+    U.act.cpCopyCode = async () => {
+      const ok = GH.platform && await GH.platform.copy(code);
+      if (ok) U.haptic('copy');
+      U.toast(ok ? 'Code copied' : 'Couldn\'t copy the code', ok ? 'positive' : 'caution');
+    };
     make();
-  };
+  }
 
   /* ================================================================== getting a shared plan */
-  U.act.cpScan = async () => {
-    if (!GH.scanner) { U.toast('Scanning isn\'t available here', 'caution'); return; }
-    const text = await GH.scanner.scan({ qr: true, title: 'Scan a plan code', accept: (t) => !!C().dataFrom(t), notThis: 'That code isn\'t a Gradient Health plan', badLink: 'That link doesn\'t hold a plan' });
-    if (text) U.openSharedPlan(text);
+  // Add a shared plan: a field for a plan code, read as it's typed or pasted (a link works in it
+  // too), with what it holds or what's wrong said under it, and the QR scanner as the other way in.
+  // Set-up's welcome opens it too ("Have a plan code?"): there the plan goes to its welcome, as a
+  // link's does (U.openSharedPlan).
+  const CODE_HINT = 'It starts with GH. Capitals, spaces and hyphens don\'t matter. A link works here too.';
+  U.act.cpScan = () => {
+    const st = { got: null, src: '', seq: 0 };
+    const ctl = U.sheet({
+      title: 'Add a shared plan', size: 'fit', cls: 'cp-sheet cp-enter-sheet',
+      body: `<div class="sheet-pad cp-enter">
+        <div class="rf-field"><label class="rf-field-label" for="cpCodeIn">Plan code</label>
+          <div class="rf-field-control"><textarea class="rf-input cp-code-in" id="cpCodeIn" rows="3" maxlength="6000" placeholder="GH12-AB34-…" autocapitalize="characters" autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="done" aria-describedby="cpCodeSay"></textarea></div></div>
+        <p class="cp-code-say t-footnote" id="cpCodeSay" role="status">${U.esc(CODE_HINT)}</p>
+        <div class="cp-imp-btns">
+          <button type="button" class="rf-btn" data-size="lg" data-act="cpCodePaste" hidden>Paste</button>
+          <button type="button" class="rf-btn" data-variant="filled" data-size="lg" data-act="cpCodeSee" disabled>See the plan</button>
+        </div>
+        <button type="button" class="rf-btn cp-enter-scan" data-variant="plain" data-act="cpScanQr">${U.icon('scan')}Scan a QR code instead</button>
+      </div>`,
+    });
+    const field = ctl.el.querySelector('#cpCodeIn'), say = ctl.el.querySelector('#cpCodeSay'), see = ctl.el.querySelector('[data-act="cpCodeSee"]'), paste = ctl.el.querySelector('[data-act="cpCodePaste"]');
+    // (Said again only when it changes: the line is a live region, and every key would repeat it.)
+    const tell = (tone, icon, text) => {
+      if (say.textContent === text && (say.getAttribute('data-tone') || '') === tone) return;
+      if (tone) say.setAttribute('data-tone', tone); else say.removeAttribute('data-tone');
+      say.innerHTML = `${icon ? U.icon(icon) : ''}<span>${U.esc(text)}</span>`;
+    };
+    // What's in the field, read: the plan it holds, or what's wrong with it. sure: it's all there (it
+    // was pasted, or they've left the field), so a code that doesn't check out has a typo; while it's
+    // still being typed, it's only not whole yet.
+    const read = async (sure) => {
+      const text = field.value.trim();
+      const mine = ++st.seq;
+      // A link among other words (a message someone sent) is read as the link.
+      const m = /(?:https?:\/\/\S*\/p\/?(?:index\.html)?#|gradienthealth:\/\/plan\/?\?)[\w=&-]+/i.exec(text);
+      st.src = m ? m[0] : text;
+      let got = null, err = null;
+      if (text) { try { got = await C().decode(st.src); } catch (e) { err = e; } }
+      if (mine !== st.seq || ctl.closed) return;
+      st.got = got;
+      see.disabled = !got;
+      if (got) {
+        if (got.code) st.src = got.code;
+        const left = got.report.unknown.length;
+        tell('positive', 'check-circle', `${got.plan.name} · ${C().summary(got.plan)}${left ? `, and ${left} more from a newer version of the app` : ''}`);
+      } else if (!text || (!sure && text.length < 3)) tell('', '', CODE_HINT);
+      else if (err.code === 'typo' && !sure && GH.planCode.tidy(text) != null) tell('', '', err.symbols < 16 || err.symbols % 4 ? 'Keep going to the end of the code.' : 'Not a whole code yet. If that\'s all of it, check it for a typo.');
+      else tell('caution', 'alert', err.code === 'newer' ? `${err.message} Update Gradient Health to open it.` : err.code ? err.message : 'That code couldn\'t be read.');
+      return !!got || !text;
+    };
+    // (Asked for outright, by a paste or the keyboard's Done, a wrong code is felt too.)
+    const ask = () => read(true).then((ok) => { if (ok === false) U.haptic('deny'); });
+    field.addEventListener('input', (e) => {
+      // It groups itself as it's typed (not while they're fixing something in the middle of it).
+      const tidy = GH.planCode.tidy(field.value);
+      if (tidy != null && tidy !== field.value && field.selectionStart === field.value.length) field.value = tidy;
+      if (e.inputType === 'insertFromPaste' || e.inputType === 'insertFromDrop') ask(); else read(false);
+    });
+    field.addEventListener('change', () => read(true));
+    field.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); field.blur(); ask(); } });
+    // Paste, where the clipboard may be read (a browser asks first; the app's WebView doesn't let a
+    // page read it, and there the field's own Paste does it).
+    const clip = G.navigator && G.navigator.clipboard;
+    if (clip && clip.readText && G.navigator.permissions) {
+      G.navigator.permissions.query({ name: 'clipboard-read' }).then((p) => { if (p.state !== 'denied' && !ctl.closed) paste.hidden = false; }, () => {});
+    }
+    U.act.cpCodePaste = async () => {
+      let text = '';
+      try { text = await clip.readText(); } catch (e) { text = ''; }
+      if (ctl.closed) return;
+      if (!text) { paste.hidden = true; tell('', '', 'Press and hold the field, then tap Paste.'); field.focus(); return; }
+      const tidy = GH.planCode.tidy(text);
+      field.value = tidy != null ? tidy : text.trim().slice(0, 6000);
+      ask();
+    };
+    U.act.cpCodeSee = () => {
+      const got = st.got;
+      if (!got) return;
+      ctl.close('ok');
+      // Someone set up sees the plan now; during set-up it goes to the welcome, as a link's does.
+      if (U.S && U.S.profile.onboarded) importSheet(got); else U.openSharedPlan(st.src);
+    };
+    U.act.cpScanQr = async () => {
+      ctl.close('ok');
+      if (!GH.scanner) { U.toast('Scanning isn\'t available here', 'caution'); return; }
+      const text = await GH.scanner.scan({ qr: true, title: 'Scan a plan code', accept: (t) => !!C().dataFrom(t), notThis: 'That code isn\'t a Gradient Health plan', badLink: 'That link doesn\'t hold a plan' });
+      if (text) U.openSharedPlan(text);
+    };
   };
+  // A shared plan before it's saved: its days and exercises as this person would do them (what's
+  // swapped, and why), the equipment it uses that they haven't listed, with a way to say they have
+  // it, and Save. One workout can go into a plan of theirs instead.
   function importSheet(got) {
     const S = U.S, day = U.today();
     const plan = got.plan;
@@ -1129,6 +1247,20 @@
     const have = C().list(S).find((p) => C().fingerprint(p) === fp) || null;
     const st = { saved: have, existed: !!have };
     const swaps = C().swapsFor(S, plan, day);
+    // The equipment it calls for that isn't in theirs, each kind once, in words ("a barbell").
+    const ctx = C().context(S, day);
+    const kit = [];
+    let forKit = 0;
+    for (const d of plan.days) for (const it of d.items) {
+      const r = C().check(ctx, it.move);
+      if (r.ok || r.why !== 'equipment') continue;
+      forKit++;
+      for (const x of r.need || []) if (!kit.includes(x)) kit.push(x);
+    }
+    const others = swaps.length - forKit;
+    const several = kit.length > 1 || !/^an? /.test(kit[0] || '');
+    // Their plans with room for another day, for a single workout (the ones changed last first).
+    const hosts = plan.days.length === 1 ? C().list(S).filter((p) => p.days.length < C().LIMITS.days && C().fingerprint(p) !== fp).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)) : [];
     const dayRows = plan.days.map((d, di) => {
       const offs = C().offsetsFor(plan.days.length, plan.weekdays);
       return `<div class="cp-imp-day"><p class="cp-day-eyebrow"><b>Day ${di + 1}</b><span>${U.esc(WD[offs[di]])}</span><span class="cp-imp-title">${U.esc(C().titleOf(plan, di))}</span></p>
@@ -1144,11 +1276,13 @@
       return `<div class="sheet-pad cp-import">
         <div class="cp-imp-head">${art(plan, 'is-lg')}<div class="cp-imp-head-text"><span class="cp-src" data-src="shared">${U.esc(plan.from ? `From ${plan.from}` : 'Shared with you')}</span><p class="t-title-3 cp-name">${U.esc(plan.name)}</p><p class="t-footnote rf-muted">${U.esc(`${C().summary(plan)} · ${daysLine(plan)}`)}</p></div></div>
         ${plan.note ? `<p class="t-callout cp-note is-box">${U.esc(plan.note)}</p>` : ''}
-        ${swaps.length ? `<p class="cp-swap is-box">${U.icon('shuffle')}<span>${U.esc(`${swaps.length === 1 ? 'One exercise needs' : `${swaps.length} exercises need`} something you don't have. You'll get the closest one you can do, shown below.`)}</span></p>` : ''}
+        ${kit.length ? `<div class="cp-swap is-box cp-kit" data-key="kit">${U.icon('dumbbell')}<span><b>${U.esc(`Uses ${listWords(kit.length > 4 ? kit.slice(0, 3).concat(`${kit.length - 3} more things`) : kit)}, which ${several ? 'aren\'t' : 'isn\'t'} in your equipment.`)}</b> ${U.esc(`${forKit === 1 ? 'That exercise is' : 'Those exercises are'} swapped for the closest you can do, shown below.`)}</span>
+            <button type="button" class="rf-btn" data-variant="soft" data-size="sm" data-act="cpImpKit">${several ? 'I have these' : 'I have this'}</button></div>` : ''}
+        ${others > 0 ? `<p class="cp-swap is-box">${U.icon('shuffle')}<span>${U.esc(`${others === 1 ? `${kit.length ? 'One more' : 'One'} exercise is swapped for the closest one` : `${others}${kit.length ? ' more' : ''} exercises are swapped for the closest ones`} that suit you, shown below.`)}</span></p>` : ''}
         ${unknown ? `<p class="cp-swap is-box">${U.icon('alert')}<span>${U.esc(`${unknown === 1 ? 'One exercise needs' : `${unknown} exercises need`} a newer Gradient Health, so ${unknown === 1 ? 'it was' : 'they were'} left out.`)}</span></p>` : ''}
         ${done ? `<div class="cp-saved" data-key="saved"><p class="cp-eyebrow" data-tone="positive">${U.icon('check-circle')}<span>${st.existed ? 'Already in your plans' : 'Saved to your plans'}</span></p>
             <div class="cp-imp-btns">${C().activeId(S) === done.id ? '' : `<button type="button" class="rf-btn" data-variant="filled" data-size="lg" data-act="cpImpUse">${U.icon('play')}${S.profile.workouts === false ? 'Turn on workouts and use it' : 'Use it now'}</button>`}<button type="button" class="rf-btn" data-size="lg" data-act="cpImpOpen">Open it</button></div></div>`
-    : `<div class="cp-imp-btns"><button type="button" class="rf-btn" data-variant="filled" data-size="lg" data-act="cpImpSave">${U.icon('download')}Save to my plans</button></div>`}
+    : `<div class="cp-imp-btns"><button type="button" class="rf-btn" data-variant="filled" data-size="lg" data-act="cpImpSave">${U.icon('download')}Save to my plans</button>${hosts.length ? `<button type="button" class="rf-btn" data-size="lg" data-act="cpImpAdd">${U.icon('plus')}Add it to a plan</button>` : ''}</div>`}
         <div class="cp-imp-days">${dayRows}</div>
       </div>`;
     };
@@ -1177,15 +1311,55 @@
       U.toast(`Using ${st.saved.name}`, 'positive', `${wasOff ? 'Workouts are on again. ' : ''}${r.from > U.today() ? 'It starts tomorrow.' : 'Your week follows it from today.'}`);
     };
     U.act.cpImpOpen = () => { const id = st.saved && st.saved.id; ctl.close('ok'); if (id) U.open('planEdit', id); };
+    // "I have this": the equipment editor (Your answers, Where you train), then this preview again,
+    // checked against what they have now. The editor is set-up's own screen over the app; it's
+    // done once it's hidden and no longer fading away.
+    U.act.cpImpKit = () => {
+      const el = U.els().onboardEl;
+      let seen = false;
+      const back = () => { mo.disconnect(); importSheet(got); };
+      const mo = new G.MutationObserver(() => {
+        if (!el.hidden) seen = true;
+        else if (seen && !el.hasAttribute('data-closing')) back();
+      });
+      mo.observe(el, { attributes: true, attributeFilter: ['hidden', 'data-closing'] });
+      ctl.close('ok');
+      U.haptic('nav');
+      Promise.resolve(U.editAnswers('equipment')).then(() => { if (el.hidden && !seen) back(); }, back);
+    };
+    // One workout into one of their plans: its day goes last, named as it came.
+    U.act.cpImpAdd = (b) => U.menu(b, hosts.slice(0, 8).map((p) => ({ act: 'cpImpAddTo', arg: p.id, icon: 'plus', label: p.name })), { label: 'Add it to a plan' });
+    U.act.cpImpAddTo = (b) => {
+      const host = C().get(U.S, b.dataset.arg);
+      if (!host || host.days.length >= C().LIMITS.days) return;
+      const before = JSON.parse(JSON.stringify({ days: host.days, weekdays: host.weekdays }));
+      const d = plan.days[0];
+      const title = d.title || (plan.name !== C().titleOf(plan, 0) && plan.name !== 'My plan' ? plan.name : '');
+      C().update(U.S, host.id, (p) => { p.days.push({ title, items: JSON.parse(JSON.stringify(d.items)) }); }, U.today());
+      delete ui.wd[host.id];
+      U.save(true);
+      ctl.close('ok');
+      U.haptic('success');
+      if (U.route.view === 'planEdit' && U.route.arg === host.id) U.render(); else U.open('planEdit', host.id);
+      U.toast(`Added to ${host.name}`, 'positive', `It's day ${host.days.length} now.`, { label: 'Undo', onClick: () => { C().update(U.S, host.id, (p) => { p.days = before.days; p.weekdays = before.weekdays; }, U.today()); U.save(true); U.render(); U.haptic('undo'); } });
+    };
   }
 
   U.cpImport = importSheet;
 
   /* ================================================================== ask the coach */
-  const ASK_CHIPS = ['3 days a week', '30 minutes', 'Full body', 'Upper and lower', 'Push, pull, legs', 'Bigger arms', 'Stronger legs', 'No equipment', 'Easy on my knees'];
-  // A plan's days as Build me a plan and Improve show them: each day's moves with their sets.
+  const ASK_CHIPS = ['3 days a week', '30 minutes', 'Full body', 'Upper and lower', 'Push, pull, legs', 'No equipment'];
+  // A plan's days as Build me a plan and Improve show them: each day's moves with their sets, and
+  // what the day is for when the plan says (a built plan's day.why).
   const planView = (S, plan) => plan.days.map((d, di) => `<div class="cp-imp-day"><p class="cp-day-eyebrow"><b>Day ${di + 1}</b><span class="cp-imp-title">${U.esc(C().titleOf(plan, di))}</span><span class="rf-num">${C().minutes(S, plan, di, U.today())} min</span></p>
+      ${d.why ? `<p class="t-footnote rf-muted cp-day-why">${U.esc(d.why)}</p>` : ''}
       <ul class="cp-imp-list">${d.items.map((it) => `<li class="cp-imp-ex">${thumb(it.move)}<span class="cp-ex-text"><span class="cp-ex-name">${U.esc(M().MOVES[it.move].name)}</span><span class="cp-ex-meta rf-num">${U.esc(itemMeta(it))}</span></span></li>`).join('')}</ul></div>`).join('');
+  // Why a built plan is this person's: its "because you" lines (plan.why), and what the app put
+  // right in a model's take (fixes), in plain words.
+  const whyList = (plan, title) => (plan.why && plan.why.length ? `<div class="cp-why-box" data-key="why"><p class="t-subhead">${U.esc(title || 'Why it\'s yours')}</p><ul class="cp-why">${plan.why.map((x) => `<li>${U.icon('check-circle', 'sm')}<span class="t-callout">${U.esc(x)}</span></li>`).join('')}</ul></div>` : '');
+  const fixList = (fixes, who) => (fixes && fixes.length ? `<div class="cp-fixes" data-key="fixes"><p class="t-subhead">${U.esc(`The app checked ${who}'s plan and adjusted it`)}</p><ul class="cp-changes t-footnote">${fixes.slice(0, 4).map((x) => `<li>${U.esc(x)}</li>`).join('')}${fixes.length > 4 ? `<li>${U.esc(`and ${fixes.length - 4} more`)}</li>` : ''}</ul></div>` : '');
+  // Whether Claude would be the one to refine a plan here (it's on, allowed and has its key).
+  const claudeOn = (S) => !!(S.ai && S.ai.mode === 'api' && S.ai.consentAt && GH.ai && GH.ai.hasKey && GH.ai.hasKey());
   // About what a Claude request for a plan costs with the person's model ("about 4¢ with" its name),
   // or nothing for the on-device AI.
   function costHint(S, by) {
@@ -1194,12 +1368,17 @@
     const c = sp.typical(S, 'build');
     return `About ${c < 10000 ? 'under 1¢' : c < 1e6 ? `${Math.round(c / 10000)}¢` : sp.money(c)} with ${sp.model(S).short}.`;
   }
-  U.act.cpBuild = () => {
+  U.act.cpBuild = async () => {
     const S = U.S;
-    const st = { step: 'ask', text: '', plan: null, by: null, ctrl: null, saved: null };
+    // Who this is, for a model (src/person.js, a part of its own): the sheet lists it, the quick
+    // choices start from it and the request is written from it.
+    if (!GH.person && GH.lazy) await GH.lazy('person').catch(() => null);
+    const picks = C().choices(S, U.today());
+    const st = { step: 'ask', text: '', plan: null, by: null, ctrl: null, saved: null, fixes: [], most: picks.most.value, feel: picks.feel.value, skip: picks.skip.value.slice() };
     const body = () => {
       if (st.step === 'propose' || st.step === 'refining' || st.step === 'saved') {
         const p = st.plan;
+        const who = st.by === 'claude' ? 'Claude' : 'the on-device AI';
         const head = `<div class="cp-imp-head">${art(p, 'is-lg')}<div class="cp-imp-head-text"><span class="cp-src" data-src="coach">Built by the coach${st.by === 'claude' ? ' with Claude' : st.by === 'device' ? ' with the on-device AI' : ''}</span><p class="t-title-3 cp-name">${U.esc(p.name)}</p><p class="t-footnote rf-muted">${U.esc(`${C().summary(p)} · ${daysLine(p)}`)}</p></div></div>`;
         const note = p.note ? `<p class="t-callout tailor-note">${U.icon('sparkle', 'sm')}<span>${U.esc(p.note)}</span></p>` : '';
         const acts = st.step === 'refining'
@@ -1209,22 +1388,43 @@
             : `<div class="cp-imp-btns"><button type="button" class="rf-btn" data-variant="filled" data-size="lg" data-act="cpBuildSave">Save</button><button type="button" class="rf-btn" data-size="lg" data-act="cpBuildEdit">Change it</button></div>`;
         return `<div class="sheet-pad cp-import cp-build${st.step === 'refining' ? ' is-refining' : ''}">
           ${st.text ? `<p class="t-callout rf-muted tailor-asked">"${U.esc(st.text)}"</p>` : ''}
-          ${head}${note}${acts}
+          ${head}${note}${whyList(p)}${acts}${st.step === 'refining' ? '' : fixList(st.fixes, who)}
           <div class="cp-imp-days">${planView(S, p)}</div>
           ${st.step === 'propose' ? '<p class="t-footnote rf-muted">Nothing changes until you save and use it. You can edit it after.</p>' : ''}
         </div>`;
       }
-      const knows = C().knows(S);
+      // What the coach uses: who this is, in the words the model gets (GH.person). With Claude it's
+      // what Claude gets, and the note under it says what stays on the phone.
+      const claude = claudeOn(S);
+      const wide = claude && GH.ai.wide(S);
+      const knows = C().knows(S, U.today(), claude ? { to: 'claude', wide, have: ['person', 'days', 'training'] } : { to: 'device' });
+      const pick = (id, label, control) => `<div class="cp-quick" role="group" aria-labelledby="${id}"><p class="t-footnote rf-muted" id="${id}">${label}</p>${control}</div>`;
       return `<div class="sheet-pad tailor cp-ask">
-        <p class="t-callout rf-muted">Say what you want. The coach builds on what it knows about you and shows you the plan first.</p>
-        <div class="rf-field"><label class="rf-field-label" for="cpAskQ">What would you like?</label><div class="rf-field-control"><textarea class="rf-input" id="cpAskQ" rows="3" maxlength="400" placeholder="3 days, 30 minutes, bigger arms, easy on my knees">${U.esc(st.text)}</textarea></div></div>
+        <p class="t-callout rf-muted">Pick what fits and add anything else in words. The coach builds on what it knows about you and shows you the plan first.</p>
+        <div class="cp-quicks">
+          ${pick('cpPickMost', 'What you want most', U.choice('cpMost', picks.most.options, st.most, 'What you want most', ' class="ob-chips" data-on="cpPickMost"'))}
+          ${pick('cpPickFeel', 'How it should feel', U.choice('cpFeel', picks.feel.options, st.feel, 'How it should feel', ' class="ob-chips" data-on="cpPickFeel"'))}
+          ${pick('cpPickSkip', 'Leave out', `<div class="ob-chips">${picks.skip.options.map(([id, t]) => U.chip(t, st.skip.includes(id), `data-on="cpPickSkip" data-v="${U.esc(id)}"`)).join('')}</div>`)}
+        </div>
+        <div class="rf-field"><label class="rf-field-label" for="cpAskQ">Anything else? (optional)</label><div class="rf-field-control"><textarea class="rf-input" id="cpAskQ" rows="2" maxlength="400" placeholder="3 days, 30 minutes, full body">${U.esc(st.text)}</textarea></div></div>
         <div class="ob-chips tailor-chips">${ASK_CHIPS.map((x) => `<button type="button" class="rf-chip" data-act="cpAskChip" data-arg="${U.esc(x)}">${U.esc(x)}</button>`).join('')}</div>
         <button type="button" class="rf-btn ob-wide" data-variant="filled" data-size="lg" data-act="cpBuildGo">${U.icon('sparkle')}Build my plan</button>
-        <div class="cp-knows"><p class="t-subhead">What the coach uses</p><ul class="cp-knows-list">${knows.map(([k, v]) => `<li><span class="t-footnote rf-muted">${U.esc(k)}</span><span class="t-footnote">${U.esc(v)}</span></li>`).join('')}</ul></div>
+        <div class="cp-knows"><p class="t-subhead">${claude ? 'What Claude gets about you' : 'What the coach uses'}</p><ul class="cp-knows-list">${knows.map(([k, v]) => `<li><span class="t-footnote rf-muted">${U.esc(k)}</span><span class="t-footnote">${U.esc(v)}</span></li>`).join('')}</ul>
+          <p class="t-footnote rf-muted">${claude ? 'With your request, your recent training and the moves you can do. Your exact age, height and health conditions stay on this phone, where the app\'s own planner uses them.' : 'All of it stays on your phone.'}</p>
+          ${claude && !wide ? `<button type="button" class="rf-btn" data-variant="soft" data-size="sm" data-act="cpBuildMore">${U.icon('sparkle')}Let Claude know more about you</button>` : ''}
+        </div>
       </div>`;
     };
     const ctl = U.sheet({ title: 'Build me a plan', size: 'auto', cls: 'cp-sheet cp-build-sheet', body: body(), onClose: () => { if (st.ctrl) st.ctrl.abort(); } });
     const draw = () => { if (!ctl.closed) { ctl.update(body()); drawThumbs(ctl.el); } };
+    // A new step starts at its top (the questions are long enough to have been scrolled).
+    const toTop = () => { if (!ctl.closed && ctl.body) ctl.body.scrollTop = 0; };
+    const typed = () => { const q = doc.getElementById('cpAskQ'); if (q) st.text = q.value.trim(); };
+    U.on.cpPickMost = (el, ev, v) => { st.most = v; };
+    U.on.cpPickFeel = (el, ev, v) => { st.feel = v; };
+    U.on.cpPickSkip = (el, ev, v) => { const id = el.dataset.v; st.skip = st.skip.filter((x) => x !== id).concat(v ? [id] : []); };
+    // The newer list for Claude (Settings' sheet, on top of this one), then the list as it is now.
+    U.act.cpBuildMore = async () => { typed(); if (U.claudeConsent && await U.claudeConsent(true)) draw(); };
     U.act.cpAskChip = (b) => {
       const q = doc.getElementById('cpAskQ');
       if (!q) return;
@@ -1233,30 +1433,30 @@
       U.haptic('tick');
     };
     U.act.cpBuildGo = async () => {
-      const q = doc.getElementById('cpAskQ');
-      st.text = (q ? q.value : st.text || '').trim();
+      typed();
       const day = U.today();
-      const w = C().wishes(S, st.text);
+      const w = C().wishes(S, st.text, { most: st.most, feel: st.feel, skip: st.skip });
       let draft;
-      try { draft = C().generate(S, day, w); } catch (e) { if (G.console) G.console.error(e); U.toast('The coach couldn\'t build that one', 'caution', 'Try saying it another way.'); return; }
-      st.plan = draft; st.by = null;
+      try { draft = C().build(S, day, w); } catch (e) { if (G.console) G.console.error(e); U.toast('The coach couldn\'t build that one', 'caution', 'Try saying it another way.'); return; }
+      st.plan = draft; st.by = null; st.fixes = [];
       const by = await C().modelFor(S);
       st.step = by ? 'refining' : 'propose';
       draw();
+      toTop();
       grow(ctl);
       U.haptic('tap');
       if (!by) return;
       const me = st.ctrl = new AbortController();
-      const r = await C().refine(S, day, w, draft, me.signal).catch(() => ({ plan: draft, by: null }));
+      const r = await C().refine(S, day, w, draft, me.signal).catch(() => ({ plan: draft, by: null, fixes: [] }));
       if (st.ctrl !== me || me.signal.aborted || st.step !== 'refining') return;
-      st.plan = r.plan; st.by = r.by; st.step = 'propose';
+      st.plan = r.plan; st.by = r.by; st.fixes = r.fixes || []; st.step = 'propose';
       draw();
       U.haptic('tap');
       // A Claude limit that stopped its take: the coach's plan stands, and they're told why.
       if (r.error && GH.ai && GH.ai.isBudget(r.error.code)) U.toast('Claude didn\'t refine it', 'caution', r.error.message);
     };
     U.act.cpBuildSkip = () => { if (st.ctrl) st.ctrl.abort(); st.ctrl = null; st.step = 'propose'; draw(); };
-    U.act.cpBuildEdit = () => { st.step = 'ask'; st.plan = null; draw(); };
+    U.act.cpBuildEdit = () => { st.step = 'ask'; st.plan = null; draw(); toTop(); };
     U.act.cpBuildSave = () => {
       const r = C().save(S, st.plan);
       st.saved = r.plan;
@@ -1292,7 +1492,7 @@
     const by = await C().modelFor(S);
     if (!by) { U.toast('Set up an AI coach first', 'neutral', 'Turn on Claude or the on-device AI in Settings, under AI coach.'); return; }
     const who = by === 'claude' ? 'Claude' : 'The on-device AI';
-    const st = { step: 'ask', text: '', plan: null, changes: [], ctrl: null, error: null };
+    const st = { step: 'ask', text: '', plan: null, changes: [], fixes: [], ctrl: null, error: null };
     const body = () => {
       if (st.step === 'working') return `<div class="sheet-pad cp-import cp-build"><div class="cp-refining" role="status"><span class="rf-spinner" data-size="sm"><i></i></span><span class="t-callout">${U.esc(who)} is reworking it…</span><button type="button" class="rf-btn" data-variant="plain" data-size="sm" data-act="cpImproveStop">Stop</button></div></div>`;
       if (st.step === 'none') {
@@ -1307,6 +1507,7 @@
           ${p.note ? `<p class="t-callout tailor-note">${U.icon('sparkle', 'sm')}<span>${U.esc(p.note)}</span></p>` : ''}
           <p class="t-subhead">What changes</p>
           <ul class="cp-changes t-footnote">${st.changes.slice(0, 12).map((x) => `<li>${U.esc(x)}</li>`).join('')}${st.changes.length > 12 ? `<li>${U.esc(`and ${st.changes.length - 12} more`)}</li>` : ''}</ul>
+          ${whyList(p, 'Why these changes')}${fixList(st.fixes, by === 'claude' ? 'Claude' : 'the on-device AI')}
           <div class="cp-imp-btns"><button type="button" class="rf-btn" data-variant="filled" data-size="lg" data-act="cpImproveReplace">Use these changes</button><button type="button" class="rf-btn" data-size="lg" data-act="cpImproveNew">Save as a new plan</button></div>
           <div class="cp-imp-days">${planView(S, p)}</div>
           <p class="t-footnote rf-muted">Your plan stays as it is until you choose.</p>
@@ -1346,7 +1547,7 @@
         U.haptic('deny');
         return;
       }
-      st.plan = r.plan; st.changes = r.changes; st.step = 'propose';
+      st.plan = r.plan; st.changes = r.changes; st.fixes = r.fixes || []; st.step = 'propose';
       draw();
       grow(ctl);
       U.haptic('tap');
@@ -1357,13 +1558,14 @@
     U.act.cpImproveReplace = () => {
       const was = C().get(S, id);
       if (!was || !st.plan) return;
-      const before = JSON.parse(JSON.stringify({ days: was.days, note: was.note }));
-      C().update(S, id, (p) => { p.days = st.plan.days; if (st.plan.note) p.note = st.plan.note; }, U.today());
+      const before = JSON.parse(JSON.stringify({ days: was.days, note: was.note, why: was.why || null }));
+      // (Its reasons come along: update() drops a plan's reasons when its exercises change otherwise.)
+      C().update(S, id, (p) => { p.days = st.plan.days; if (st.plan.note) p.note = st.plan.note; if (st.plan.why) p.why = st.plan.why; else delete p.why; }, U.today());
       U.save(true);
       ctl.close('ok');
       U.haptic('success');
       U.render();
-      U.toast('Plan updated', 'positive', undefined, { label: 'Undo', onClick: () => { C().update(U.S, id, (p) => { p.days = before.days; p.note = before.note; }, U.today()); U.save(true); U.render(); U.haptic('undo'); } });
+      U.toast('Plan updated', 'positive', undefined, { label: 'Undo', onClick: () => { C().update(U.S, id, (p) => { p.days = before.days; p.note = before.note; if (before.why) p.why = before.why; else delete p.why; }, U.today()); U.save(true); U.render(); U.haptic('undo'); } });
     };
     U.act.cpImproveNew = () => {
       if (!st.plan) return;

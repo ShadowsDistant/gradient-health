@@ -48,3 +48,10 @@
 :root[data-rf-motion="full"] .rf-dialog { --duration-spring-bouncy: 500ms; }
 :root[data-rf-motion="full"] .rf-dialog[open] { animation-duration: .5s; }
 :root[data-rf-motion="full"] .rf-dialog[open] > form > * { animation-duration: .32s; }
+
+/* A press answers at once on every tappable part. The app's cards, rows and text buttons have theirs
+   (src/styles.css); the body map's muscles, which open a sheet, dim under a finger, and so do the
+   summaries that open a dropdown (About this number, the plan review's, set-up's, the coach's older
+   chats, a study list). */
+.bm-m:active { opacity: .7; }
+:is(.ms-about, .rv-not, .ob-more, .cl-older, .sci-studies) > summary:active { opacity: .55; transition-duration: 0ms; }

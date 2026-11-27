@@ -206,10 +206,15 @@
   function paint(root) {
     const home = root.querySelector('.set-home'), res = root.querySelector('.set-results');
     if (!home || !res) return;
-    const on = !!norm(query);
+    const on = !!norm(query), was = !res.hidden;
+    // (Drawn again at each letter, which is what keeps a letter quick: patched in place with the
+    // rows gliding, a letter took three to four times as long at 4x CPU.) The first results take the
+    // parts' place, and the parts come back, with a short fade.
     if (on) res.innerHTML = results(U.S);
     home.hidden = on;
     res.hidden = !on;
+    const now = on ? res : home;
+    if (was !== on && now.animate && !U.reduced()) now.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 160, easing: 'ease-out' });
   }
 
   /* ---------------------------------------------------------------- the parts, one by one */
@@ -329,6 +334,8 @@
         + (key && SP() ? kw(U.row({ key: 'claude-model', icon: 'sparkle', tone: 'violet', title: 'Model and thinking', detail: U.esc(`${SP().model(S).short} · ${SP().LEVEL_NAMES[SP().level(S)]}`), act: 'claudeModel', chevron: true }), 'claude model opus sonnet haiku fable thinking effort reasoning')
           + kw(U.row({ key: 'claude-spend', icon: 'card', tone: 'teal', title: 'Spending and usage', sub: U.esc(SP().todayLine(S, U.today())), act: 'claudePage', chevron: true }), 'budget spending limit cost usage money dollars price tokens bill monthly daily') : '')
         + (key ? (S.ai.consentAt ? U.row({ key: 'consent', icon: 'check-circle', tone: 'green', title: 'You allowed Claude to get your summary', sub: 'Turn it off by picking another coach, or withdraw it', act: 'claudeWithdraw', chevron: true }) : U.row({ key: 'consent', icon: 'alert', tone: 'amber', title: 'Claude is waiting for your OK', sub: 'Review what it gets before it turns on', act: 'claudeReview', chevron: true }))
+          // (The list grew in 1.15: someone who allowed the older one is asked before the rest goes.)
+          + (S.ai.consentAt && !AI().wide(S) ? kw(U.row({ key: 'consent-more', icon: 'sparkle', tone: 'violet', title: 'Let Claude know more about you', sub: 'How you eat, what your weights mean for you, what you do', act: 'claudeMore', chevron: true }), 'personal plans eating protein weights') : '')
           + kw(U.row({ key: 'delkey', icon: 'trash', tone: 'rose', title: 'Delete key', act: 'deleteKey' }), 'api key remove') : '')
         + U.row({ key: 'claudeapp', icon: 'share', tone: 'violet', title: 'Ask in the Claude app', sub: 'Uses your own Claude plan, no key needed', act: 'askClaudeApp', chevron: true })
         + kw(U.row({ key: 'sent', icon: 'eye', tone: 'sky', title: 'What gets sent', sub: 'The exact summary Claude sees', act: 'previewSheet', chevron: true }), 'privacy data summary');
@@ -386,7 +393,7 @@
     body() {
       return menu('data', kw(U.row({ key: 'export', icon: 'copy', tone: 'teal', title: 'Copy my data', sub: 'Everything but the API key, as text to keep safe', act: 'exportData' }), 'backup export')
         + kw(U.row({ key: 'restore', icon: 'download', tone: 'indigo', title: 'Restore from a copy', act: 'restoreSheet', chevron: true }), 'backup import')
-        + kw(U.row({ key: 'reset', icon: 'trash', tone: 'rose', title: 'Reset everything', act: 'resetAll' }), 'delete erase start over'))
+        + kw(U.row({ key: 'reset', cls: 'is-danger', icon: 'trash', tone: 'rose', title: 'Reset everything', act: 'resetAll' }), 'delete erase start over'))
         + foot('data', 'Keep the copy in a note or an email to yourself, then paste it into Restore, here or on a new phone.');
     },
   }, {
@@ -736,31 +743,40 @@
 
   // Claude gets a summary of the person's health data, so it only turns on after they've seen what
   // goes and said yes. Resolves true once allowed (remembered), false if they said no.
-  U.claudeConsent = () => new Promise((resolve) => {
+  // The list has grown since some people allowed it (GH.ai.CONSENT: 1.15 added what makes a plan
+  // personal). more: asks someone who allowed the older list for the newer one. Saying no there
+  // changes nothing: Claude keeps getting what they allowed before.
+  U.claudeConsent = (more) => new Promise((resolve) => {
     const S = U.S;
-    if (S.ai.consentAt) { resolve(true); return; }
+    const again = !!more && !!S.ai.consentAt;
+    if (S.ai.consentAt && !again) { resolve(true); return; }
     let answered = false;
     const done = (ok) => {
       if (answered) return;
       answered = true;
-      if (ok) { S.ai.consentAt = Date.now(); U.save(true); }
+      if (ok) { if (!S.ai.consentAt) S.ai.consentAt = Date.now(); S.ai.consentV = AI().CONSENT; U.save(true); }
       resolve(ok);
     };
     const food = GH.food && GH.food.full(S);
+    // (Each thing src/person.js sends Claude with the newer OK, and nothing else: keep them in step.)
+    const fresh = ['How you eat (not much, some or plenty of protein, fruit and veg, if you said), and how often you reach your protein goal', 'Whether you\'re lean for your height, and what your weights mean for your size', 'Muscles you asked the plan to lean toward, the days you train and whether at home or a gym, and how long you\'ve used the app', 'How many workouts you really do, how long they take and how many you cut short, and which exercises move up or stall', 'What you\'ve picked, hidden, pinned, asked for, taken or turned down'].map((x) => `<li>${x}</li>`).join('');
     const ctl = U.sheet({
-      title: 'Share your data with Claude?', size: 'full', cls: 'consent-sheet',
+      title: again ? 'Let Claude know more about you?' : 'Share your data with Claude?', size: 'full', cls: 'consent-sheet',
       body: `<div class="sheet-prose">
-        <p class="t-body">Claude is Anthropic's AI. Gradient Health sends Anthropic a summary of your data with each question, suggestion or plan check, and weekly for your report.</p>
-        <p class="t-headline">The summary holds</p>
+        ${again ? `<p class="t-body">Plans and answers can be more personal when Claude knows a little more. This is new, and it only goes if you allow it:</p>
+        <ul class="plain-list">${fresh}</ul>
+        <p class="t-headline">As before, the summary also holds</p>` : `<p class="t-body">Claude is Anthropic's AI. Gradient Health sends Anthropic a summary of your data with each question, suggestion or plan check, and weekly for your report.</p>
+        <p class="t-headline">The summary holds</p>`}
         <ul class="plain-list">
           <li>An age range (not your age), and your sex if you gave it</li>
           <li>Your goals, experience, schedule and equipment, and joints you're careful with</li>
+          ${again ? '' : fresh}
           <li>Averages and trends of your sleep, steps, heart rate, HRV, active calories and weight</li>
           <li>Your training: workouts done, sets, levels and how they felt</li>
           ${food ? '<li>Your calorie target and what you ate on average (not the foods)</li>' : ''}
           <li>To check your plan (here or in the weekly report): next week's plan, its exercises, sets and minutes</li>
         </ul>
-        <p class="t-body">Never your name, email, exact dates, device IDs or the health conditions you plan around. Anthropic's privacy policy applies there. Turn Claude off any time in Settings.</p>
+        <p class="t-body">Never your name, email, exact dates, device IDs, your exact age or height, or the health conditions you plan around. Anthropic's privacy policy applies there. ${again ? 'Say no and Claude keeps getting what you allowed before.' : 'Turn Claude off any time in Settings.'}</p>
         <div class="btn-row"><button type="button" class="rf-btn" data-variant="plain" data-act="previewSheet">${U.icon('eye')}See exactly what gets sent</button><button type="button" class="rf-btn" data-variant="plain" data-act="privacySheet">${U.icon('lock')}Privacy policy</button></div>
         <div class="btn-row fd-actions"><button type="button" class="rf-btn rf-glass" data-variant="tinted" data-size="lg" data-act="claudeAllow">Allow</button><button type="button" class="rf-btn" data-size="lg" data-act="claudeDeny">Not now</button></div>
       </div>`,
@@ -769,11 +785,14 @@
     U.act.claudeAllow = () => { done(true); U.haptic('success'); ctl.close('ok'); };
     U.act.claudeDeny = () => { done(false); ctl.close('cancel'); };
   });
+  // For someone who allowed the list before it grew: the newer one, from Settings or a plan's sheet.
+  U.act.claudeMore = async () => { if (await U.claudeConsent(true)) { U.render(); U.toast('Claude knows more about you now', 'positive', 'Plans and answers can be more personal.'); } };
   U.act.claudeReview = async () => { if (await U.claudeConsent()) { U.S.ai.enabled = U.S.ai.mode === 'api'; U.save(true); U.render(); U.toast('Claude is on', 'positive'); } };
   U.act.claudeWithdraw = async () => {
     if (!(await U.confirm('Stop sending your data to Claude?', 'Claude turns off and the on-device coach takes over. Nothing more is sent, and your reports and chats stay on this phone.', 'Stop', 'critical'))) return;
     const S = U.S;
     S.ai.consentAt = null;
+    delete S.ai.consentV;
     S.ai.enabled = false;
     if (S.ai.mode === 'api') S.ai.mode = 'device';
     U.save(true);
@@ -1005,10 +1024,12 @@
     AI().deleteKey(U.S);
     U.commit();
   };
-  U.act.previewSheet = () => {
+  U.act.previewSheet = async () => {
+    // (Who this is, for a model, loads on demand: the preview is what a question sends, all of it.)
+    if (AI().who) await AI().who();
     U.sheet({
       title: 'What gets sent', size: 'auto',
-      body: `<div class="sheet-pad"><p class="t-callout rf-muted">Claude gets this with each question, weekly report and suggestion once you allow it, and the Claude app when you ask there. Plan builds, checks and improvements send less, plus the plan and the moves you can do. No name, email, exact dates or device IDs. The on-device coach and the phone's own report send nothing.</p></div><pre class="preview">${U.esc(AI().preview(U.S, U.today()))}</pre>`,
+      body: `<div class="sheet-pad"><p class="t-callout rf-muted">Claude gets this with each question, weekly report and suggestion once you allow it, and the Claude app when you ask there. Plan builds, checks and improvements send less, plus the plan and the moves you can do. No name, email, exact dates, device IDs, exact age, height or health conditions. The on-device coach and the phone's own report send nothing.</p></div><pre class="preview">${U.esc(AI().preview(U.S, U.today()))}</pre>`,
     });
   };
 

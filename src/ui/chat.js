@@ -83,7 +83,7 @@
       on = !!(loaded && loaded.id === id);
     }
     return `<button type="button" class="chat-pill" data-act="chatEngineSheet" aria-label="Who answers: ${U.esc(name)}${sub ? `, ${U.esc(sub)}` : ''}. Change">
-      ${U.icon(e === 'api' ? 'sparkle' : 'chip', 'sm')}<span class="pill-text">${U.esc(name)}${sub ? `<span class="pill-sub"> · ${U.esc(sub)}</span>` : ''}</span><span class="pill-dot"${on ? ' data-on' : ''} aria-hidden="true"></span>${U.icon('chevron-down', 'sm')}</button>`;
+      ${U.icon(e === 'api' ? 'sparkle' : 'chip', 'sm')}<span class="pill-text">${U.esc(name)}${sub ? `<span class="pill-sub">&nbsp;· ${U.esc(sub)}</span>` : ''}</span><span class="pill-dot"${on ? ' data-on' : ''} aria-hidden="true"></span>${U.icon('chevron-down', 'sm')}</button>`;
   }
 
   /* ---------------------------------------------------------------- answers as cards */
@@ -287,7 +287,7 @@
     if (!GH.embeds) part().then((ok) => { if (ok) refreshChat(); });
     chat = U.sheet({
       title: 'Ask the coach', size: 'full', cls: 'chat-sheet',
-      body: chatBody(S), action: { label: 'Chats', act: 'chatList' },
+      body: chatBody(S), action: { label: 'Chats', act: 'chatList', quiet: true },
       // Closing doesn't stop an answer: it carries on, and the coach button shows when it's there.
       onClose: () => { chat = null; syncButtons(); },
       after: (c) => { const log = c.el.querySelector('#chatLog'); if (log) log.scrollTop = log.scrollHeight; fadeSheen(c); },
@@ -348,7 +348,7 @@
     return `<div class="sheet-pad">
       <ul class="rf-list">${row('device', 'chip', 'violet', 'On this phone', 'Private and works offline')}${row('api', 'sparkle', 'indigo', 'Claude', 'Sharper answers, with your own API key')}</ul>
       ${e === 'api' && GH.spend && AI() && AI().hasKey() ? `<ul class="rf-list">${U.row({ key: 'claude-model', icon: 'lightbulb', tone: 'amber', title: 'Model and thinking', detail: U.esc(`${GH.spend.model(S).short} · ${GH.spend.LEVEL_NAMES[GH.spend.level(S)]}`), act: 'claudeModel', chevron: true })}${U.row({ key: 'claude-spend', icon: 'card', tone: 'teal', title: 'Spending and usage', detail: U.esc(GH.spend.todayLine(S, U.today())), act: 'claudePage', chevron: true })}</ul>` : ''}
-      ${e === 'device' && U.modelRows ? `<p class="sec-title">Model</p><ul class="rf-list">${U.modelRows(S, { compact: true })}</ul><p class="t-footnote rf-muted">Bigger sizes answer better but start slower. Settings has a self-test that times each one here.</p>` : ''}
+      ${e === 'device' && U.modelRows ? `<h3 class="rf-list-header">Model</h3><ul class="rf-list">${U.modelRows(S, { compact: true })}</ul><p class="t-footnote rf-muted">Bigger sizes answer better but start slower. Settings has a self-test that times each one here.</p>` : ''}
     </div>`;
   }
   U.act.chatEngineSheet = () => {
@@ -422,7 +422,7 @@
   }
   U.act.chatList = () => {
     editing = false;
-    listSheet = U.sheet({ title: 'Chats', size: 'auto', detent: 'large', cls: 'chat-list-sheet', body: listBody(U.S), action: { label: 'Edit', act: 'chatListEdit' }, onClose: () => { listSheet = null; editing = false; } });
+    listSheet = U.sheet({ title: 'Chats', size: 'auto', detent: 'large', cls: 'chat-list-sheet', body: listBody(U.S), action: { label: 'Edit', act: 'chatListEdit', quiet: true }, onClose: () => { listSheet = null; editing = false; } });
     refreshList();
   };
   U.act.chatListEdit = () => { editing = !editing; U.haptic('select'); refreshList(); };
@@ -656,7 +656,12 @@
         </div>
         <pre class="preview" id="handPrev" hidden></pre>`,
     });
-    U.act.handPreview = (b) => {
+    // (Who this is, for a model, loads on demand: in before the summary is shown or shared, so both
+    // are the same text.)
+    const who = () => (GH.ai && GH.ai.who ? GH.ai.who() : Promise.resolve());
+    who();
+    U.act.handPreview = async (b) => {
+      await who();
       const pre = ctl.el.querySelector('#handPrev');
       const open = pre.hidden;
       pre.hidden = !open;
@@ -664,7 +669,8 @@
       b.textContent = open ? 'Hide it' : 'Show what gets sent';
       if (open) pre.textContent = GH.coach.claudePrompt(U.S, U.today(), (ctl.el.querySelector('#handQ') || {}).value);
     };
-    U.act.handOff = () => {
+    U.act.handOff = async () => {
+      await who();
       const q = (ctl.el.querySelector('#handQ') || {}).value || '';
       const ok = GH.platform.share(GH.coach.claudePrompt(U.S, U.today(), q), 'claude');
       if (!ok) { U.toast('Couldn\'t open another app', 'caution'); return; }

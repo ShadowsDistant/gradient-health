@@ -36,6 +36,10 @@
  *   from how they were: those that stay flow to their new width, new ones bud out, gone ones pinch off.
  * U.menu(trigger, items, o)  A list of actions as Refract's menu, grown out of its button.
  *
+ * More moves at particular moments (a picture that travels into a sheet, rings and bars that fill, the
+ * workout player's own) are in src/ui/moments.js, a part that loads after launch: it uses tok (the
+ * design system's curves), track (what settled() waits for) and shield (a copy that takes no taps).
+ *
  * For src/ui/core.js: snap(root) measures a page before a re-render patches it; the patch reports
  * each container it changes (patched), so new blocks rise in and removed ones leave from where they
  * were (one in sight stays in the page, inert, for the 180 ms its fade takes: code or a test that
@@ -90,6 +94,7 @@
     };
     return tokens[i];
   }
+  M.tok = tok;
 
   // Glides on the snappy spring, and a long one on the smooth spring: Refract's curves over less time
   // than its own settle times (460 and 640 ms), which is the same spring, stiffer. Nothing the app
@@ -116,6 +121,7 @@
     p.then(() => playing.delete(p));
     return p;
   }
+  M.track = track;
   M.settled = () => (playing.size ? Promise.all(Array.from(playing)).then(() => M.settled()) : Promise.resolve());
   // Whether a page moved in the last ms (a route change, the page starting to leave at a tap, a
   // re-render's glides): work that can wait a moment (a 3D still, src/ui/stills.js) waits for it, as
@@ -292,6 +298,7 @@
       }
     }
   }
+  M.shield = shield;
 
   /* ---------------------------------------------------------------- route changes */
   // How each kind moves: Refract 1.4's page motion (Refract.page), on its snappy spring, quick enough
@@ -421,6 +428,8 @@
 
   M.routeSwap = (screen, frag, kind) => {
     moved();
+    // (Once the new page is in: what src/ui/moments.js does as a page arrives.)
+    if (M.arrived) Promise.resolve().then(() => M.arrived(screen, kind));
     const pre = below;
     below = null;
     const lv = leavingScreen && leavingScreen.screen === screen ? leavingScreen : null;

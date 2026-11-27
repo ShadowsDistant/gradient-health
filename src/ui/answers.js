@@ -29,7 +29,15 @@
     { id: 'food', title: 'Food', section: 'Food', when: (p) => foodMode(p) === 'full' },
     { id: 'plan', title: 'Your plan', section: 'Your plan' },
   ];
-  U.answers = { GOALS, JOINTS, STEPS, foodMode };
+  // 1.15: how often meals hold protein-rich food, and fruit or vegetables (profile.eats).
+  const EATS = [['low', 'Rarely'], ['some', 'Some meals'], ['most', 'Most meals']];
+  // "Protein rarely · fruit and vegetables most meals", or '' with neither answered.
+  const eatsWords = (p) => {
+    const e = (p && p.eats) || {};
+    const w = (v) => (EATS.find((x) => x[0] === v) || [])[1];
+    return [w(e.protein) ? `Protein ${w(e.protein).toLowerCase()}` : null, w(e.produce) ? `${w(e.protein) ? 'fruit' : 'Fruit'} and vegetables ${w(e.produce).toLowerCase()}` : null].filter(Boolean).join(' · ');
+  };
+  U.answers = { GOALS, JOINTS, STEPS, foodMode, EATS, eatsWords };
 
   // The screens You and Settings list under "Your answers" for this person.
   U.editableSteps = () => {
@@ -54,10 +62,12 @@
     const w = p.weightKg ? U.fmtW(p.weightKg, 0) : null;
     const names = Object.fromEntries(GOALS);
     const pr = p.protein || {};
+    // One sentence-case line: a list's later items in lower case ("Visible abs, bigger arms").
+    const listed = (a) => a.map((s, i) => (i ? s.toLowerCase() : s)).join(', ');
     switch (id) {
-      case 'about': return [p.age ? `${p.age} years` : null, w, p.heightCm ? (U.lb() ? `${Math.floor(p.heightCm / 30.48)} ft ${Math.round(p.heightCm / 2.54 % 12)} in` : `${p.heightCm} cm`) : null].filter(Boolean).join(' · ') || 'Age, weight and height';
-      case 'conditions': { const list = (p.conditions || []).map((c) => (A().CONDITIONS.find((x) => x.id === c) || {}).name).filter(Boolean); return list.length ? list.join(', ') : 'Nothing to plan around'; }
-      case 'goals': return (p.goals || []).map((g) => names[g] || g).join(', ') || 'Consistency';
+      case 'about': return [p.age ? `${p.age} years` : null, w, p.heightCm ? (U.lb() ? `${Math.floor(p.heightCm / 30.48)} ft ${Math.round(p.heightCm / 2.54 % 12)} in` : `${p.heightCm} cm`) : null, eatsWords(p) || null].filter(Boolean).join(' · ') || 'Age, weight and height';
+      case 'conditions': { const list = (p.conditions || []).map((c) => (A().CONDITIONS.find((x) => x.id === c) || {}).name).filter(Boolean); return list.length ? listed(list) : 'Nothing to plan around'; }
+      case 'goals': return listed((p.goals || []).map((g) => names[g] || g)) || 'Consistency';
       case 'experience': return EXP[p.experience] || 'How long you\'ve trained';
       case 'schedule': return `${p.days} days a week · ${p.minutes} min`;
       case 'equipment': return U.equipSummary(p);

@@ -19,7 +19,7 @@
   // Each muscle group's colour (the hues the moves use).
   const GROUP_HUE = { biceps: 'amber', triceps: 'rose', chest: 'indigo', legs: 'green', back: 'teal', shoulders: 'sky', abs: 'violet', conditioning: 'coral', mobility: 'teal' };
   const hue = (g) => `var(--hue-${GROUP_HUE[g] || 'sky'})`;
-  const PHASE = { full: 'Full volume', deload: 'Deload week', onramp: 'Easing in', comeback: 'Easing back in' };
+  const PHASE = { full: 'Full volume', deload: 'Lighter week', onramp: 'Easing in', comeback: 'Easing back in' };
 
   // What's picked: the section (the week or the moves), a day (this week or next) and whether its
   // "Move to" choices are open. Coming back to the tab (or a new day) starts from today again, on
@@ -853,13 +853,13 @@
     const w = week(U.S, U.today());
     const ph = w.phase;
     const text = {
-      full: 'You do every set your plan calls for. About one week in five is a lighter deload, so tiredness clears and you keep getting stronger.',
+      full: 'You do every set your plan calls for. About one week in five is lighter, so tiredness clears and you keep getting stronger.',
       deload: `About ${100 - ph.pct}% fewer sets, so built-up tiredness can clear. Your weights and levels stay put, and next week is back to full volume.`,
       onramp: `Your first weeks have about ${ph.pct}% of the usual sets while your body adjusts.${ph.fullFrom ? ` Full volume starts in week ${ph.fullFrom}.` : ''}`,
       comeback: `After over a week off, this week has about ${ph.pct}% of the sets. Strength comes back quickly.`,
     }[ph.key];
     const key = [['work', 'A workout'], ['done', 'Done'], ['light', 'Light day: a walk and a short mobility flow'], ['missed', 'Missed: the rest of the week moves a day'], ['frozen', 'Freeze used: missed, streak kept (one a week)']];
-    const why = ph.key === 'comeback' ? ['comeback', 'How coming back works'] : ['deload', 'How deload weeks work'];
+    const why = ph.key === 'comeback' ? ['comeback', 'How coming back works'] : ['deload', 'How lighter weeks work'];
     U.sheet({
       title: PHASE[ph.key], size: 'fit',
       body: `<div class="sheet-pad pw-sheet">

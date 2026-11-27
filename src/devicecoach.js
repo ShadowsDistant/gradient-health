@@ -25,13 +25,18 @@
     'If FACTS say none, answer from THEIR DATA below, or say you can\'t tell from their data and what they could track. Never make up a number.',
     'Say yes or no plainly when the question asks, and make sure it matches the numbers.',
     'You are not a doctor and never diagnose. Chest pain, fainting, a resting heart rate over 100, unplanned fast weight loss or pain that won\'t go away: tell them to see a doctor.',
-    'The app plans the workouts and targets. Explain them; don\'t write new programs, diets or meal plans.',
+    'The app plans the workouts and targets. Explain them; don\'t write new programs, diets or meal plans, and never suggest medicine, supplements, a target weight or cutting out a food.',
   ].join('\n');
 
   const r0 = (x) => String(Math.round(x));
   const r1 = (x) => (Math.round(x * 10) / 10).toFixed(1);
   const GOAL = { abs: 'visible abs', arms: 'bigger arms', chest: 'bigger chest', legs: 'legs and glutes', back: 'back and posture', fat: 'lose fat', strength: 'strength', endurance: 'endurance', mobility: 'mobility', consistency: 'consistency' };
 
+  // What makes their plan theirs, in the short form (src/person.js): their build, what their weights
+  // mean for them, how they eat, what they do and what they've chosen.
+  const WHO = ['build', 'focus', 'load', 'eats', 'does', 'stuck', 'likes'];
+  // That part, in before the brief is written (it loads on demand).
+  async function who() { if (!GH.person && GH.lazy) await GH.lazy('person').catch(() => null); }
   // The numbers the model sees, one short line each.
   function brief(S, day) {
     const b = B(), h = H(), p = S.profile;
@@ -44,6 +49,11 @@
     // What the plan works around (age band, health conditions). Only this on-device model sees it.
     const around = GH.access && GH.access.briefLine(p);
     if (around) L.push(`The plan is adapted for ${around}. Never give medical advice; suggest a doctor for anything medical.`);
+    if (GH.person) {
+      for (const f of GH.person.facts(S, day, { to: 'device', ids: WHO, short: true })) L.push(`${f.label}: ${f.value}.`);
+      const guard = GH.person.guard(S, day, { to: 'device' });
+      if (guard) L.push(guard);
+    }
     if (workouts) {
       const where = p.where === 'gym' ? 'at a gym' : p.where === 'both' ? 'at home and at a gym' : 'at home';
       L.push(`Plan: ${p.days} workouts a week, about ${p.minutes} min each, ${where}.`);
@@ -234,6 +244,7 @@
     const llm = await GH.lazy('llm');
     // How it works (a part of its own, src/ui/lazy.js) has the rule each answer's facts quote.
     await GH.lazy('science').catch(() => null);
+    await who();
     const av = llm.available();
     if (!av.ok) throw err(av.reason, 'unavailable');
     const id = pick(S, await llm.installed());
@@ -329,6 +340,7 @@
       const id = pick(S, await llm.installed());
       if (!id) return false;
       await llm.load(id);
+      await who();
       if (llm.prepare) await llm.prepare(system(S, day));
       return true;
     } catch (e) { return false; }
@@ -336,5 +348,5 @@
   // A new chat: the next question starts a conversation of its own.
   function clear(S) { S.ai.chatId = null; }
 
-  GH.deviceCoach = { RULES, brief, facts, system, messages, fits, lead, keepToGiven, finish, ask, structured, room, prime, pick, clear };
+  GH.deviceCoach = { RULES, brief, facts, system, messages, fits, lead, keepToGiven, finish, ask, structured, room, prime, pick, clear, who };
 })(typeof window !== 'undefined' ? window : globalThis);

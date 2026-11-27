@@ -230,7 +230,7 @@ await page.waitForSelector('#screen[data-view="plan"] ul[data-key="mine"]', { ti
 await wait(300);
 const planRows = await ev(() => ({ build: (document.querySelector('#screen ul[data-key="mine"] [data-act="cpBuild"] .rf-list-title') || {}).textContent, check: (document.querySelector('#screen ul[data-key="mine"] [data-act="reviewPlan"] .rf-list-title') || {}).textContent }));
 check('with Claude on, Plan offers to build a plan with it and to check this one', planRows.build === 'Build me a plan with Claude' && planRows.check === 'Check my plan with Claude', planRows);
-await ev(() => { const S = window.GH.ui.S, C = window.GH.customPlan, day = window.GH.ui.today(); window.__plan = C.save(S, C.generate(S, day, C.wishes(S, '3 days, 30 minutes'))).plan.id; window.GH.store.save(S); window.GH.ui.open('planEdit', window.__plan); });
+await ev(async () => { await window.GH.lazy('planUi'); const S = window.GH.ui.S, C = window.GH.customPlan, day = window.GH.ui.today(); window.__plan = C.save(S, C.generate(S, day, C.wishes(S, '3 days, 30 minutes'))).plan.id; window.GH.store.save(S); window.GH.ui.open('planEdit', window.__plan); });
 await page.waitForSelector('#screen [data-act="cpImprove"]', { timeout: 10000 });
 check('a plan of their own has Improve with Claude', /Improve with Claude/.test(await ev(() => document.querySelector('#screen [data-act="cpImprove"]').textContent)));
 const sets0 = await ev(() => window.GH.customPlan.get(window.GH.ui.S, window.__plan).days[0].items.map((x) => x.sets).join());

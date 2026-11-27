@@ -17,7 +17,14 @@
 // - U.motion.collapse, expand and exit;
 // - Today's feel check folds into its summary only once the thumb has landed, and the cards after
 //   it glide;
-// - reduced motion: a route change is a short fade, lists change at once;
+// - the moments (src/ui/moments.js, a part that loads after launch): rings and bars fill as a page
+//   brings them (once, then only from what they last showed); the workout player opens out of the
+//   button that was tapped, its figure travels between its card and Up next's picture across a set
+//   and a rest, the ring fills, the count rolls and beats, a tap mid-flight takes over, and the finish
+//   lands a part at a time within 1.2 s; a move's picture travels from its row into its how-to on
+//   the sheet's own curve; Settings' results and Health's insights glide instead of blinking;
+// - reduced motion: a route change is a short fade, lists change at once, and none of the moments
+//   moves anything;
 // - the lint: no keyframes in src/ui touch layout (height, width, margin, padding, top, left and the
 //   like), in the source and in every animation the app starts here; Refract's material motion, which
 //   the app asks for by name, touches only what its API animates; bursts are 8 to 14 beads;
@@ -184,6 +191,21 @@ await page.evaluate(() => {
     glides: (el) => (el ? el.getAnimations().filter((a) => !a.transitionProperty && !a.animationName && window.__m.props(a).join() === 'transform').length : 0),
     pauseAll: () => { const list = document.getAnimations().filter((a) => !a.transitionProperty && !a.animationName && !window.__m.own(a)); for (const a of list) { a.pause(); a.currentTime = 0; } return list; },
     playAll: (list) => { for (const a of list) a.play(); },
+    // A copy handing over to what it lands on (list paused): stepped through its time, how far apart
+    // their middles are whenever both show (each over 0.1 opaque; held is what fades in for it).
+    handoff: (list, copy, to, held) => {
+      const end = Math.max(...list.map((a) => a.effect.getComputedTiming().endTime).filter(Number.isFinite));
+      const mid = (el) => { const r = el.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; };
+      let max = 0, both = 0;
+      for (let t = 0; t <= end; t += 5) {
+        for (const a of list) a.currentTime = Math.min(t, a.effect.getComputedTiming().endTime - 0.5);
+        if (Number(getComputedStyle(copy).opacity) <= 0.1 || Number(getComputedStyle(held).opacity) <= 0.1) continue;
+        const [a, b] = [mid(copy), mid(to)];
+        both++;
+        max = Math.max(max, Math.round(Math.hypot(a[0] - b[0], a[1] - b[1])));
+      }
+      return { max, both };
+    },
     dupIds: () => { const m = new Map(); for (const el of document.querySelectorAll('[id]')) m.set(el.id, (m.get(el.id) || 0) + 1); return Array.from(m).filter(([, n]) => n > 1).map(([k]) => k); },
     leftovers: () => ({ exit: document.querySelectorAll('.screen-exit').length, copies: document.querySelectorAll('.motion-copy').length, leaving: document.querySelectorAll('.motion-leaving').length, fading: document.querySelectorAll('[data-fading]').length }),
   };
@@ -788,6 +810,533 @@ section('The feel check folds once its thumb has landed');
   await settle();
 }
 
+/* ---------------------------------------------------------------- moments */
+// The moments' part (src/ui/moments.js) loads after launch; here it's asked for.
+section('Moments: the part');
+{
+  const r = await page.evaluate(async () => {
+    await window.GH.lazy('moments');
+    const M = window.GH.ui.motion;
+    return { fns: ['travel', 'fill', 'arrived', 'enterPlayer', 'scene', 'count', 'beat', 'land', 'timerIn'].filter((n) => typeof M[n] !== 'function') };
+  });
+  check('its moves are there once it has loaded (the page works without them until then)', r.fns.length === 0, r);
+}
+
+section('Moments: rings and bars fill as a page brings them');
+{
+  const r = await page.evaluate(async () => {
+    const U = window.GH.ui;
+    const frame = () => new Promise((res) => requestAnimationFrame(() => res()));
+    const bar = () => document.querySelector('#screen [data-key="protein"] .rf-progress');
+    const look = () => { const b = bar(); const f = b.querySelector('.rf-progress-fill'); return { v: b.style.getPropertyValue('--rf-value').trim(), held: f.style.transition === 'none', w: Math.round(f.getBoundingClientRect().width) }; };
+    const visit = async () => {
+      U.go('plan'); await U.motion.settled();
+      U.go('today');
+      await Promise.resolve(); await frame();
+      const at0 = look();
+      await new Promise((res) => setTimeout(res, 260)); await frame(); await frame();
+      const mid = look();
+      await new Promise((res) => setTimeout(res, 700));
+      await U.motion.settled();
+      return { at0, mid, end: look() };
+    };
+    // (Today's bar may have been seen already, the part being in since a moment after launch: its
+    // first sight is tried under a place of its own.)
+    U.go('plan'); await U.motion.settled();
+    U.go('today'); await U.motion.settled();
+    await new Promise((res) => setTimeout(res, 900));
+    U.motion.fill(document.getElementById('screen'), 'a place not seen before');
+    const new0 = look();
+    await new Promise((res) => setTimeout(res, 260)); await frame(); await frame();
+    const new1 = look();
+    await new Promise((res) => setTimeout(res, 700));
+    await U.motion.settled();
+    const first = { at0: new0, mid: new1, end: look() };
+    const again = await visit();
+    U.go('plan'); await U.motion.settled();
+    window.GH.brain.addProtein(U.S, U.today(), 20);
+    U.go('today');
+    await Promise.resolve(); await frame();
+    const moved0 = look();
+    await new Promise((res) => setTimeout(res, 1000));
+    const moved1 = look();
+    window.GH.brain.undoProtein(U.S, U.today());
+    U.render();
+    await U.motion.settled();
+    return { first, again, moved0, moved1 };
+  });
+  const full = Number(r.first.end.v);
+  check('the first time a page shows a bar it starts empty, held there without a glide', r.first.at0.v === '0' && r.first.at0.held && r.first.at0.w === 0, r.first.at0);
+  check('then it is given its value and Refract\'s own fill glides it there', full > 0.3 && r.first.mid.v === r.first.end.v && !r.first.mid.held && r.first.end.w > 100, r.first);
+  check('the page again with nothing changed: the bar is simply there', r.again.at0.v === r.first.end.v && !r.again.at0.held && Math.abs(r.again.end.w - r.first.end.w) <= 1 && r.again.mid.v === r.first.end.v, r.again);
+  check('after a change made elsewhere it glides from what it last showed to the new value', r.moved0.v === r.first.end.v && r.moved0.held && Number(r.moved1.v) > full && r.moved1.w > r.first.end.w, { from: r.moved0, to: r.moved1 });
+}
+
+section('Moments: the workout player');
+{
+  await page.evaluate(async () => { window.GH.ui.go('today'); await window.GH.ui.motion.settled(); });
+  await wait(300);
+  // Opening: the main button grows out of the button that was tapped.
+  const src = await page.evaluate(() => { const r = document.querySelector('#float [data-act="startWorkout"]').getBoundingClientRect(); return { cx: r.left + r.width / 2, cy: r.top + r.height / 2, h: Math.round(r.height) }; });
+  const open = await page.evaluate(async () => {
+    const m = window.__m;
+    document.querySelector('#float [data-act="startWorkout"]').click();
+    await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+    const pl = document.querySelector('.player');
+    const btn = pl.querySelector('.pl-actions > .rf-btn[data-variant="tinted"]');
+    const a = m.anims(btn).find((x) => m.props(x).includes('transform'));
+    const list = m.pauseAll();
+    const at0 = btn.getBoundingClientRect();
+    m.playAll(list);
+    const all = m.anims(pl).concat(...Array.from(pl.children, (c) => m.anims(c)), m.anims(btn));
+    const out = { shown: !pl.hidden, at0: { cx: at0.left + at0.width / 2, cy: at0.top + at0.height / 2, h: Math.round(at0.height) }, ms: a ? a.effect.getTiming().duration : 0, props: Array.from(new Set(all.flatMap(m.props))).sort().join(), rootFades: m.anims(pl).some((x) => m.props(x).join() === 'opacity') };
+    await window.GH.ui.motion.settled();
+    await new Promise((res) => setTimeout(res, 450));
+    out.rest = getComputedStyle(btn).transform === 'none' && getComputedStyle(btn).opacity === '1' && !btn.hasAttribute('data-fading');
+    return out;
+  });
+  check('the player opens over Today', open.shown && open.rootFades, open);
+  check('its main button starts on the button that was tapped (its middle on that button\'s, at that button\'s height)', Math.abs(open.at0.cx - src.cx) <= 2 && Math.abs(open.at0.cy - src.cy) <= 2 && Math.abs(open.at0.h - src.h) <= 1, { src, at0: open.at0 });
+  check('by transform and opacity only, in under 400 ms, and it rests in place', open.props === 'opacity,transform' && open.ms > 0 && open.ms <= 400 && open.rest, open);
+
+  // A set with the same move coming next (straight sets): the figure travels from its card into Up
+  // next's picture, the rest's ring fills from nothing, and what was logged settles in.
+  const at = await page.evaluate(() => {
+    const U = window.GH.ui, a = U.S.active;
+    // (A move with a third straight set if there is one: the interrupted tap below does the second
+    // set and needs another of the same move after it, and 1.15's moves often have only two.)
+    const same = (s, k, n) => [...Array(n)].every((_, j) => a.steps[k + j + 1] && a.steps[k + j + 1].item === s.item && a.steps[k + j + 1].kind === 'set');
+    const first = (n) => a.steps.findIndex((s, k) => s.kind === 'set' && !s.item.timed && s.set === 0 && s.rest > 0 && same(s, k, n));
+    const i = first(2) >= 0 ? first(2) : first(1);
+    if (i < 0) return null;
+    a.idx = i;
+    U.openPlayer();
+    return { i, name: a.steps[i].item.name, of: a.steps[i].of };
+  });
+  check('the workout has a move done in straight sets to try this on', !!at, at);
+  await wait(500);
+  const card = await page.evaluate(() => { const r = document.querySelector('.player .pl-fig-card').getBoundingClientRect(); return { cx: r.left + r.width / 2, cy: r.top + r.height / 2, h: r.height }; });
+  const rest = await page.evaluate(async () => {
+    const m = window.__m, pl = document.querySelector('.player');
+    pl.querySelector('[data-act="plDone"]').click();
+    const ring = pl.querySelector('.pl-timer .rf-ring');
+    const out = { held: ring.hasAttribute('data-gh-fill'), v0: ring.style.getPropertyValue('--rf-value').trim() };
+    await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+    const thumb = pl.querySelector('.pl-next-row .pl-fig-sm');
+    const a = m.anims(thumb).find((x) => m.props(x).join() === 'transform');
+    const list = m.pauseAll();
+    const r = thumb.getBoundingClientRect();
+    out.at0 = { cx: r.left + r.width / 2, cy: r.top + r.height / 2, h: r.height };
+    m.playAll(list);
+    out.travels = !!a;
+    out.ms = a ? a.effect.getTiming().duration : 0;
+    out.logged = m.anims(pl.querySelector('.pl-logged')).length > 0;
+    out.name = pl.querySelector('.pl-next .t-headline').textContent;
+    await new Promise((res) => setTimeout(res, 700));
+    out.v1 = Number(ring.style.getPropertyValue('--rf-value'));
+    out.let = !ring.hasAttribute('data-gh-fill') && ring.querySelector('.rf-ring-fill').style.transition !== 'none';
+    out.rest = getComputedStyle(thumb).transform === 'none';
+    return out;
+  });
+  check('a set done: the figure starts where its card was and travels into Up next\'s picture', rest.travels && rest.name === (at && at.name) && Math.abs(rest.at0.cx - card.cx) <= 2 && Math.abs(rest.at0.cy - card.cy) <= 2 && Math.abs(rest.at0.h - card.h) <= 2 && rest.ms <= 400 && rest.rest, { card, rest });
+  check('the rest\'s ring starts empty and fills (Refract\'s own fill), then follows the clock', rest.held && rest.v0 === '0' && rest.v1 > 0.9 && rest.let, rest);
+  check('what was logged settles in', rest.logged, rest);
+
+  // Time added rolls the count; then on to the next set: the figure comes up out of Up next's
+  // picture into its card, and the dot of the set just done lands.
+  const count = await page.evaluate(async () => {
+    const c = document.querySelector('.player .pl-count');
+    // (A minute just passed rolls the count too: once that roll is over.)
+    for (let i = 0; i < 40 && (c.children.length || !/^\d+:\d\d$/.test(c.textContent)); i++) await new Promise((res) => setTimeout(res, 50));
+    const before = c.textContent;
+    document.querySelector('.player [data-act="plMore"]').click();
+    const rolling = c.children.length > 0 || c.getAnimations({ subtree: true }).length > 0;
+    await new Promise((res) => setTimeout(res, 900));
+    const secs = (t) => t.split(':').reduce((a, x) => a * 60 + Number(x), 0);
+    return { before, after: c.textContent, rolling, more: secs(c.textContent) - secs(before) };
+  });
+  check('+15 s rolls the count up to its new time', count.rolling && count.more >= 12 && count.more <= 15 && /^\d+:\d\d$/.test(count.after), count);
+  const thumb = await page.evaluate(() => { const r = document.querySelector('.player .pl-next-row .pl-fig-sm').getBoundingClientRect(); return { cx: r.left + r.width / 2, cy: r.top + r.height / 2, h: r.height }; });
+  const next = await page.evaluate(async () => {
+    const m = window.__m, pl = document.querySelector('.player');
+    pl.querySelector('[data-act="plSkipRest"]').click();
+    await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+    const fig = pl.querySelector('.pl-fig-card');
+    const a = m.anims(fig).find((x) => m.props(x).join() === 'transform');
+    const list = m.pauseAll();
+    const r = fig.getBoundingClientRect();
+    const out = { at0: { cx: r.left + r.width / 2, cy: r.top + r.height / 2, h: r.height }, travels: !!a };
+    m.playAll(list);
+    const done = pl.querySelectorAll('.pl-dots .done');
+    out.dots = done.length;
+    out.dotLands = done.length > 0 && m.anims(done[done.length - 1]).some((x) => m.props(x).includes('transform'));
+    const all = Array.from(pl.querySelectorAll('.pl-main, .pl-main *, .pl-actions'), (n) => m.anims(n)).flat();
+    out.props = Array.from(new Set(all.flatMap(m.props))).sort().join();
+    out.longest = Math.max(0, ...all.map((x) => x.effect.getComputedTiming().endTime));
+    await window.GH.ui.motion.settled();
+    await new Promise((res) => setTimeout(res, 500));
+    out.rest = getComputedStyle(fig).transform === 'none' && !pl.querySelector('.pl-main').style.overflow;
+    out.left = m.leftovers();
+    return out;
+  });
+  check('the next set: the figure starts on Up next\'s picture, at its size, and comes up into its card', next.travels && Math.abs(next.at0.cx - thumb.cx) <= 2 && Math.abs(next.at0.cy - thumb.cy) <= 2 && Math.abs(next.at0.h - thumb.h) <= 2, { thumb, at0: next.at0 });
+  check('the dot of the set just done lands', next.dots === 1 && next.dotLands, next);
+  check('the scene moves by transform and opacity only, all of it in within 700 ms, and rests in place', next.props === 'opacity,transform' && next.longest > 0 && next.longest <= 700 && next.rest && Object.values(next.left).every((n) => n === 0), next);
+
+  // Interrupted: a tap while a scene is still coming in is taken at once.
+  const cut = await page.evaluate(async () => {
+    const pl = document.querySelector('.player');
+    document.querySelector('.player [data-act="plDone"]').click();
+    await new Promise((res) => requestAnimationFrame(res));
+    const mid = Array.from(pl.querySelectorAll('.pl-main, .pl-main *'), (n) => window.__m.anims(n)).flat().filter((a) => a.playState === 'running').length;
+    document.querySelector('.player [data-act="plSkipRest"]').click();
+    // (A set that asks how many reps were left holds the rest until the answer or Continue.)
+    const cont = pl.querySelector('[data-act="plContinue"]');
+    if (cont) cont.click();
+    await new Promise((res) => requestAnimationFrame(res));
+    const out = { mid, step: !!pl.querySelector('.pl-main:not(.pl-rest) .pl-fig-card') };
+    await window.GH.ui.motion.settled();
+    await new Promise((res) => setTimeout(res, 500));
+    out.left = window.__m.leftovers();
+    out.rest = getComputedStyle(pl.querySelector('.pl-fig-card')).transform === 'none';
+    return out;
+  });
+  check('a tap while the scene is still moving takes over at once, and nothing is left behind', cut.mid > 0 && cut.step && cut.rest && Object.values(cut.left).every((n) => n === 0), cut);
+
+  // A hold: the ring pops in where the seconds were; each of the 3-2-1 is a beat on the count.
+  const hold = await page.evaluate(async () => {
+    const U = window.GH.ui, m = window.__m, a = U.S.active;
+    const i = a.steps.findIndex((s) => s.kind === 'warmup' || s.kind === 'cooldown' || (s.kind === 'set' && s.item.timed));
+    if (i < 0) return null;
+    a.idx = i;
+    U.openPlayer();
+    await new Promise((res) => setTimeout(res, 400));
+    const pl = document.querySelector('.player');
+    const start = pl.querySelector('[data-act="plStartTimer"]');
+    if (!start) return { noStart: true };
+    const beats = [];
+    const orig = Element.prototype.animate;
+    Element.prototype.animate = function (f, o) { if (this.classList && this.classList.contains('pl-count')) beats.push(Object.keys(f[0]).join()); return orig.call(this, f, o); };
+    start.click();
+    const ring = pl.querySelector('.pl-timer');
+    const out = { ring: !!ring, pops: !!ring && m.anims(ring).some((x) => m.props(x).sort().join() === 'opacity,transform') };
+    await new Promise((res) => setTimeout(res, 2400));
+    Element.prototype.animate = orig;
+    out.beats = beats;
+    out.text = pl.querySelector('.pl-count').textContent;
+    document.querySelector('.player [data-act="plCancelTimer"], .player [data-act="plStopEarly"]').click();
+    return out;
+  });
+  check('a hold\'s ring pops in where its seconds were', hold && hold.ring && hold.pops, hold);
+  check('each of the 3-2-1 is a beat on the count (transform only)', hold && hold.beats && hold.beats.length >= 2 && hold.beats.every((b) => b === 'transform'), hold);
+
+  // The finish: its parts land one after another, done within 1.2 s.
+  const fin = await page.evaluate(async () => {
+    const U = window.GH.ui, B = window.GH.brain, S = U.S, m = window.__m;
+    let g = 0;
+    while (S.active && S.active.idx < S.active.steps.length && g++ < 400) {
+      const st = S.active.steps[S.active.idx];
+      B.completeStep(S, st.kind === 'test' ? { value: 16 } : st.kind === 'set' && !st.item.timed ? { reps: B.currentTarget(S.active, st) + 3 } : {});
+      if (st.askRir) B.setRir(S, st.item, '4');
+    }
+    U.openCheckin();
+    await new Promise((res) => setTimeout(res, 300));
+    document.querySelector('.player [data-act="plSaveCheckin"]').click();
+    const kids = Array.from(document.querySelectorAll('.player .pl-scroll > *'));
+    const info = kids.map((n) => { const a = m.anims(n).find((x) => m.props(x).includes('transform')); const t = a ? a.effect.getComputedTiming() : null; return { cls: n.className.split(' ').slice(0, 2).join('.'), delay: t ? t.delay : null, end: t ? t.endTime : null, pop: a ? /scale/.test(m.frames(a)[0].transform) : false, props: a ? m.props(a).sort().join() : '' }; });
+    await new Promise((res) => setTimeout(res, 1500));
+    await U.motion.settled();
+    return { info, rest: kids.every((n) => getComputedStyle(n).opacity === '1' && getComputedStyle(n).transform === 'none') };
+  });
+  const cards = fin.info.filter((x) => /celebrate|bdg-card/.test(x.cls));
+  const delays = fin.info.map((x) => x.delay);
+  check('the finish: every part lands by transform and opacity', fin.info.length >= 3 && fin.info.every((x) => x.props === 'opacity,transform'), fin.info);
+  // (The first four cards pop; any after them land with what's next, so it all fits in 1.2 s.)
+  check('one after another: the title first, then what the workout brought, each card popping in its turn, then what\'s next', delays.every((d, i) => i === 0 || d >= delays[i - 1]) && cards.length >= 1 && cards.every((c, i) => c.pop === i < 4) && cards.every((c, i) => i === 0 || c.delay > cards[i - 1].delay), fin.info);
+  check('all of it within 1.2 s, and it rests in place', Math.max(...fin.info.map((x) => x.end)) <= 1200 && fin.rest, fin.info.map((x) => x.end));
+  await page.evaluate(() => document.querySelector('.player [data-act="plClose"]').click());
+  await settle(600);
+}
+
+section('Moments: a move\'s picture travels into its how-to');
+{
+  await page.evaluate(async () => { window.GH.ui.go('plan'); await window.GH.ui.motion.settled(); });
+  await wait(500);
+  const row = '#screen .pw-ex-row[data-act="planMoveInfo"]';
+  await page.evaluate((sel) => document.querySelector(sel).scrollIntoView({ block: 'center' }), row);
+  await wait(400);
+  const from = await page.evaluate((sel) => { const t = document.querySelector(sel).querySelector('.pw-thumb'); const r = t.getBoundingClientRect(); return { cx: r.left + r.width / 2, cy: r.top + r.height / 2, pic: !!t.querySelector('img, svg') }; }, row);
+  const tr = await page.evaluate(async (sel) => {
+    const m = window.__m, U = window.GH.ui;
+    document.querySelector(sel).click();
+    await Promise.resolve();
+    const dlg = document.querySelector('dialog.gh-sheet[open]');
+    const copy = dlg && dlg.querySelector(':scope > .motion-copy');
+    const out = { sheet: !!dlg, copy: !!copy };
+    if (copy) {
+      const a = m.anims(copy).find((x) => m.props(x).join() === 'transform'), panel = dlg.querySelector('.gh-sheet-panel');
+      const p = m.anims(panel).find((x) => m.props(x).join() === 'transform');
+      const list = m.pauseAll();
+      const r = copy.getBoundingClientRect();
+      out.at0 = { cx: r.left + r.width / 2, cy: r.top + r.height / 2 };
+      for (const x of list) x.currentTime = x.effect.getComputedTiming().endTime - 0.5;
+      const e = copy.getBoundingClientRect(), box = dlg.querySelector('.sheet-fig').getBoundingClientRect();
+      out.end = { cx: e.left + e.width / 2, cy: e.top + e.height / 2, w: e.width, h: e.height };
+      out.box = { cx: box.left + box.width / 2, cy: box.top + box.height / 2, w: box.width, h: box.height };
+      out.apart = m.handoff(list, copy, dlg.querySelector('.sheet-fig'), dlg.querySelector('.sheet-fig-card'));
+      for (const x of list) x.currentTime = 0;
+      m.playAll(list);
+      out.inert = copy.inert && copy.getAttribute('aria-hidden') === 'true' && getComputedStyle(copy).position === 'fixed';
+      out.same = !!a && !!p && a.effect.getTiming().duration === p.effect.getTiming().duration && a.effect.getTiming().easing === p.effect.getTiming().easing;
+      out.props = m.anims(copy).flatMap(m.props).sort().join();
+      out.held = m.anims(dlg.querySelector('.sheet-fig-card')).some((x) => Number(m.frames(x)[0].opacity) === 0);
+    }
+    await U.motion.settled();
+    await new Promise((res) => setTimeout(res, 400));
+    out.left = m.leftovers();
+    out.card = dlg ? getComputedStyle(dlg.querySelector('.sheet-fig-card')).opacity : null;
+    out.fig = dlg ? dlg.querySelectorAll('.sheet-fig > *').length : 0;
+    U.closeSheets();
+    await new Promise((res) => setTimeout(res, 500));
+    return out;
+  }, row);
+  check('the row has a picture, and its sheet opens with a copy of it over the sheet (inert, hidden from assistive tech)', from.pic && tr.sheet && tr.copy && tr.inert, tr);
+  check('the copy starts on the row\'s picture', tr.copy && Math.abs(tr.at0.cx - from.cx) <= 2 && Math.abs(tr.at0.cy - from.cy) <= 2, { from, at0: tr.at0 });
+  check('and ends in the middle of the sheet\'s figure box, as large as fits it', tr.copy && Math.abs(tr.end.cx - tr.box.cx) <= 3 && Math.abs(tr.end.cy - tr.box.cy) <= 3 && tr.end.w <= tr.box.w + 2 && tr.end.h <= tr.box.h + 2 && (Math.abs(tr.end.h - tr.box.h) <= 3 || Math.abs(tr.end.w - tr.box.w) <= 3), { end: tr.end, box: tr.box });
+  check('it rides up with the sheet: the same time and curve as the panel\'s slide, by transform and opacity', tr.same && tr.props === 'opacity,transform', tr);
+  check('what the sheet draws there waits for it, then shows; the copy is gone when it ends', tr.held && tr.card === '1' && tr.fig > 0 && Object.values(tr.left).every((n) => n === 0), tr);
+  check('it hands over only once it\'s there: while both show, the copy is within 16 px of the box rising with the sheet', tr.apart && tr.apart.both > 0 && tr.apart.max <= 16, tr.apart);
+}
+
+section('Moments: a health number\'s icon travels into its sheet');
+{
+  await page.evaluate(async () => { window.GH.ui.go('health'); await window.GH.ui.motion.settled(); });
+  await wait(500);
+  const tile = '#screen .hl-tile[data-act="metricOpen"]';
+  await page.evaluate((sel) => document.querySelector(sel).scrollIntoView({ block: 'center' }), tile);
+  await wait(400);
+  const from = await page.evaluate((sel) => { const t = document.querySelector(sel).querySelector('.hl-ico'); const r = t.getBoundingClientRect(); return { cx: r.left + r.width / 2, cy: r.top + r.height / 2, bg: getComputedStyle(t).backgroundColor }; }, tile);
+  const ic = await page.evaluate(async (sel) => {
+    const m = window.__m, U = window.GH.ui;
+    document.querySelector(sel).click();
+    await Promise.resolve();
+    const dlg = document.querySelector('dialog.gh-sheet[open]');
+    const copy = dlg && dlg.querySelector(':scope > .motion-copy');
+    const to = dlg && dlg.querySelector('.ms-ico');
+    const out = { sheet: !!dlg, copy: !!copy, to: !!to };
+    if (copy && to) {
+      out.inert = copy.inert && copy.getAttribute('aria-hidden') === 'true';
+      out.bg = getComputedStyle(copy).backgroundColor;
+      const list = m.pauseAll();
+      const r = copy.getBoundingClientRect();
+      out.at0 = { cx: r.left + r.width / 2, cy: r.top + r.height / 2 };
+      for (const x of list) x.currentTime = x.effect.getComputedTiming().endTime - 0.5;
+      const e = copy.getBoundingClientRect(), b = to.getBoundingClientRect();
+      out.end = { cx: e.left + e.width / 2, cy: e.top + e.height / 2, w: e.width };
+      out.box = { cx: b.left + b.width / 2, cy: b.top + b.height / 2, w: b.width };
+      out.apart = m.handoff(list, copy, to, to);
+      for (const x of list) x.currentTime = 0;
+      m.playAll(list);
+      out.props = m.anims(copy).flatMap(m.props).sort().join();
+    }
+    await U.motion.settled();
+    await new Promise((res) => setTimeout(res, 400));
+    out.left = m.leftovers();
+    out.icon = to ? getComputedStyle(to).opacity : null;
+    U.closeSheets();
+    await new Promise((res) => setTimeout(res, 500));
+    return out;
+  }, tile);
+  check('a tile opens its sheet with a copy of its icon over the sheet, inert, in the tile\'s colour', ic.sheet && ic.copy && ic.inert && ic.bg === from.bg, { ic, from });
+  check('the copy starts on the tile\'s icon and ends on the sheet\'s, at its size', ic.copy && Math.abs(ic.at0.cx - from.cx) <= 2 && Math.abs(ic.at0.cy - from.cy) <= 2 && Math.abs(ic.end.cx - ic.box.cx) <= 2 && Math.abs(ic.end.cy - ic.box.cy) <= 2 && Math.abs(ic.end.w - ic.box.w) <= 2, { from, ic });
+  check('by transform and opacity; it hands over once it\'s there (within 16 px while both show), and nothing is left', ic.props === 'opacity,transform' && ic.apart && ic.apart.both > 0 && ic.apart.max <= 16 && ic.icon === '1' && Object.values(ic.left).every((n) => n === 0), ic);
+}
+
+section('Moments: a chart draws in once');
+{
+  // At the first frame a chart shows: is its wipe (styles.css) playing?
+  const wiping = (root) => page.evaluate(async (root) => {
+    await new Promise((res) => requestAnimationFrame(res));
+    return Array.from(document.querySelectorAll(`${root} .ch-svg`), (s) => s.getAnimations().some((a) => a.animationName === 'ch-wipe' && a.playState === 'running'));
+  }, root);
+  await page.evaluate(async () => { const U = window.GH.ui; U.go('progress'); await U.motion.settled(); });
+  await wait(900);
+  await page.evaluate(async () => { const U = window.GH.ui; U.go('today'); await U.motion.settled(); });
+  await wait(400);
+  await page.evaluate(() => window.GH.ui.go('progress'));
+  const back = await wiping('#screen');
+  await settle(600);
+  await page.evaluate(() => window.GH.ui.metricSheet('rhr'));
+  await wait(900);
+  // (A range picked redraws the sheet a moment later: until its chart's key changes.)
+  const range = await page.evaluate(async () => {
+    const key = () => (document.querySelector('dialog.gh-sheet[open] .ch-svg') || {}).getAttribute?.('data-key');
+    const was = key();
+    document.querySelector('dialog.gh-sheet[open] input[value="7"]').click();
+    for (let i = 0; i < 120 && key() === was; i++) await new Promise((res) => requestAnimationFrame(res));
+    return Array.from(document.querySelectorAll('dialog.gh-sheet[open] .ch-svg'), (s) => s.getAnimations().some((a) => a.animationName === 'ch-wipe' && a.playState === 'running'));
+  });
+  await wait(900);
+  await page.evaluate(() => window.GH.ui.closeSheets());
+  await wait(700);
+  await page.evaluate(() => window.GH.ui.metricSheet('rhr'));
+  const again = await wiping('dialog.gh-sheet[open]');
+  await wait(600);
+  await page.evaluate(async () => { const U = window.GH.ui; U.closeSheets(); U.go('today'); await U.motion.settled(); });
+  check('a page brought back shows its charts drawn, rather than drawing them in again', back.length > 0 && back.every((x) => !x), back);
+  check('and so does a sheet opened again; a new range draws in', again.length > 0 && again.every((x) => !x) && range.length > 0 && range.every(Boolean), { again, range });
+}
+
+section('Moments: lists that filter and shrink');
+{
+  // Settings' search: the first results fade in where the parts were, and the parts fade back; a
+  // letter more only draws the results again (typing stays as quick as it was).
+  await page.evaluate(async () => { const U = window.GH.ui; U.go('you'); await U.motion.settled(); U.open('settings'); await U.motion.settled(); });
+  await wait(300);
+  // (Typed as the keyboard does it: the field's value, then its input event.)
+  await page.evaluate(() => { window.__type = (v) => { const i = document.querySelector('#screen .set-search input'); i.value = v; i.dispatchEvent(new Event('input', { bubbles: true })); }; });
+  const s1 = await page.evaluate(() => { window.__type('s'); const res = document.querySelector('#screen .set-results'); return { shown: !res.hidden, fades: window.__m.anims(res).some((a) => window.__m.props(a).join() === 'opacity'), rows: res.querySelectorAll('li').length }; });
+  await wait(300);
+  const s2 = await page.evaluate(async () => {
+    window.__row = Array.from(document.querySelectorAll('#screen .set-results li'));
+    window.__type('so');
+    const now = Array.from(document.querySelectorAll('#screen .set-results li:not(.motion-leaving)'));
+    const out = { rows: now.length, kept: now.filter((n) => window.__row.includes(n)).length, was: window.__row.length };
+    await window.GH.ui.motion.settled();
+    out.left = window.__m.leftovers();
+    return out;
+  });
+  check('the first results fade in where the parts were', s1.shown && s1.fades && s1.rows > 0, s1);
+  check('a letter more narrows them at once, with nothing left behind', s2.rows > 0 && s2.rows < s2.was && Object.values(s2.left).every((n) => n === 0), s2);
+  const s3 = await page.evaluate(() => { window.__type(''); const home = document.querySelector('#screen .set-home'); return { home: !home.hidden, fades: window.__m.anims(home).some((a) => window.__m.props(a).join() === 'opacity') }; });
+  check('cleared, the parts fade back in', s3.home && s3.fades, s3);
+  await page.evaluate(async () => { const U = window.GH.ui; U.back(); await U.motion.settled(); });
+
+  // Health's insights: one hidden, the ones after it glide up into its place.
+  await page.evaluate(async () => { const U = window.GH.ui; U.go('health'); await U.motion.settled(); });
+  await wait(400);
+  const ins = await page.evaluate(async () => {
+    const U = window.GH.ui, m = window.__m;
+    const list = document.querySelector('#screen .hl-ins-list');
+    if (!list || list.children.length < 2) return null;
+    list.scrollIntoView({ block: 'center' });
+    await new Promise((res) => setTimeout(res, 300));
+    const first = list.children[0], second = list.children[1];
+    const before = m.box(second);
+    const id = first.querySelector('[data-act="dismissInsight"]').dataset.arg;
+    window.GH.insights.dismiss(U.S, id, U.today());
+    U.render();
+    const anims = m.pauseAll();
+    const out = { flip: list.hasAttribute('data-flip'), before, at0: m.box(second), leaving: first.classList.contains('motion-leaving'), glides: m.glides(second) };
+    m.playAll(anims);
+    await U.motion.settled();
+    out.after = m.box(second);
+    out.gone = !first.isConnected;
+    return out;
+  });
+  check('an insight hidden: it fades where it was, and the next one glides up from where it was (no jump)', ins && ins.flip && ins.leaving && ins.glides === 1 && Math.abs(ins.at0.top - ins.before.top) <= 1 && ins.after.top < ins.before.top - 20 && ins.gone, ins);
+
+  // A filter picked: the list changes too much to glide, so what's in sight of the new one settles in,
+  // starting in the frame that first shows it. Not the badges' filter, whose tiles just change.
+  // In the page: pick it, then at each frame until it changes, whether what's in sight is moving.
+  const refill = (root, sel, pick) => page.evaluate(async ([root, sel, pick]) => {
+    const m = window.__m, U = window.GH.ui;
+    const r = () => document.querySelector(root);
+    const was = Array.from(r().querySelectorAll(sel));
+    (0, eval)(pick);
+    const frame = () => new Promise((res) => requestAnimationFrame(res));
+    let list = was, n = 0, changed = false;
+    while (!changed && n++ < 120) { await frame(); list = Array.from(r().querySelectorAll(sel)); changed = list.length !== was.length || list.some((x, i) => x !== was[i]); }
+    const h = innerHeight;
+    const sight = list.filter((x) => { const b = x.getBoundingClientRect(); return b.height && b.bottom > 0 && b.top < h; }).slice(0, 10);
+    const out = { changed, was: was.length, now: list.length, sight: sight.length, moving: sight.filter((x) => m.anims(x).length).length, props: Array.from(new Set(sight.flatMap((x) => m.anims(x).flatMap(m.props)))).sort().join(), ends: Math.max(0, ...sight.flatMap((x) => m.anims(x).map((a) => a.effect.getComputedTiming().endTime))) };
+    await U.motion.settled();
+    out.after = sight.every((x) => getComputedStyle(x).opacity === '1' && getComputedStyle(x).transform === 'none');
+    out.left = m.leftovers();
+    return out;
+  }, [root, sel, pick]);
+  await page.evaluate(async () => { const U = window.GH.ui; U.go('you'); await U.motion.settled(); U.open('badges'); await U.motion.settled(); });
+  await wait(600);
+  const bf = await refill('#screen', '.bdg-tile, .bdg-next', 'document.querySelector(\'#screen input[value="earned"]\').click()');
+  check('the badges\' filter: its tiles just change (settling them in, each with its medal a layer of its own, cost 200 to 600 ms of long tasks at 4x CPU)', bf.changed && bf.now < bf.was && bf.moving === 0 && Object.values(bf.left).every((x) => x === 0), bf);
+  await page.evaluate(async () => { document.querySelector('#screen input[value="all"]').click(); await new Promise((res) => setTimeout(res, 1200)); await window.GH.ui.motion.settled(); window.GH.ui.back(); await window.GH.ui.motion.settled(); });
+  // The plan builder's picker: a muscle group's chip refills it the same way; a letter typed doesn't.
+  await page.evaluate(async () => {
+    const U = window.GH.ui, C = () => window.GH.customPlan;
+    await window.GH.lazy('planUi');
+    if (!C().list(U.S).length) { U.open('plans'); U.act.cpNew(); U.act.cpNewCopy(); await new Promise((res) => setTimeout(res, 1200)); U.closeSheets(); }
+    U.open('planEdit', C().list(U.S)[0].id);
+    await U.motion.settled();
+    U.act.cpAdd({ dataset: { arg: '0' } });
+  });
+  await wait(1500);
+  const pf = await refill('dialog.gh-sheet[open] .cp-vl', '.cp-row', 'document.querySelectorAll(\'dialog.gh-sheet[open] .cp-filters [data-arg]\')[2].click()');
+  check('the picker\'s muscle group: the rows in sight settle in the same way', pf.changed && pf.sight > 2 && pf.moving === pf.sight && pf.props === 'opacity,transform' && pf.ends <= 250 && pf.after, pf);
+  const typed = await page.evaluate(async () => {
+    const q = document.querySelector('dialog.gh-sheet[open] #cpQ');
+    q.value = document.querySelector('dialog.gh-sheet[open] .cp-row .cp-row-name').textContent.trim().slice(0, 4);
+    q.dispatchEvent(new Event('input', { bubbles: true }));
+    await new Promise((res) => setTimeout(res, 300));
+    const rows = Array.from(document.querySelectorAll('dialog.gh-sheet[open] .cp-row'));
+    const out = { rows: rows.length, moving: rows.filter((x) => window.__m.anims(x).length).length };
+    window.GH.ui.closeSheets();
+    await new Promise((res) => setTimeout(res, 600));
+    window.GH.ui.go('today');
+    await window.GH.ui.motion.settled();
+    return out;
+  });
+  check('and a letter typed in its search just shows what matches', typed.rows > 0 && typed.moving === 0, typed);
+}
+
+/* ---------------------------------------------------------------- presses */
+// Every tappable part answers a press at once: with :active forced on it (CSS.forcePseudoState), it,
+// what's in it or a neighbour looks different. Not the parts whose answer is code's (a segment's bead
+// lifts under a finger, a chart's plot shows its values, a sheet's grabber is dragged) or that only
+// assistive tech reaches (the body map's list of muscles).
+section('Presses');
+{
+  const cdp = await ctx.newCDPSession(page);
+  await cdp.send('DOM.enable');
+  await cdp.send('CSS.enable');
+  const PROPS = ['transform', 'scale', 'translate', 'opacity', 'background-color', 'background-image', 'color', 'filter', 'box-shadow', 'border-color'];
+  const SKIP = '.rf-segment, .rf-sheet-grabber, [data-act="chartTap"], .bm-sr *';
+  const quiet = [];
+  let seen = 0;
+  const places = [['today', () => window.GH.ui.go('today')], ['plan', () => window.GH.ui.go('plan')], ['health', () => window.GH.ui.go('health')], ['progress', () => window.GH.ui.go('progress')], ['you', () => window.GH.ui.go('you')], ['a health number\'s sheet', () => window.GH.ui.metricSheet('sleepMin')]];
+  for (const [name, go] of places) {
+    await page.evaluate(go);
+    await settle(700);
+    const n = await page.evaluate(([PROPS, SKIP, sheet]) => {
+      const root = sheet ? document.querySelector('dialog.gh-sheet[open]') : document.getElementById('app');
+      const vis = (el) => { const r = el.getBoundingClientRect(); return r.width > 4 && r.height > 4 && el.checkVisibility({ visibilityProperty: true, opacityProperty: true }); };
+      const els = Array.from(root.querySelectorAll('[data-act], button, a[href], summary, [role="button"], label.rf-chip')).filter((el) => !el.closest('.motion-copy, .screen-exit, [inert]') && !el.matches(SKIP) && !el.disabled && vis(el));
+      document.querySelectorAll('[data-pp]').forEach((x) => x.removeAttribute('data-pp'));
+      els.forEach((el, i) => el.setAttribute('data-pp', String(i)));
+      window.__look = (i) => {
+        const el = document.querySelector(`[data-pp="${i}"]`);
+        const parts = [el, ...Array.from(el.querySelectorAll('*')).slice(0, 40), ...Array.from(el.parentElement.children).filter((x) => x !== el).slice(0, 12)];
+        return parts.map((p) => { const cs = getComputedStyle(p); return PROPS.map((k) => cs.getPropertyValue(k)).join('|'); }).join('#');
+      };
+      return els.length;
+    }, [PROPS, SKIP, name.includes('sheet')]);
+    seen += n;
+    const doc = await cdp.send('DOM.getDocument', { depth: 0 });
+    for (let i = 0; i < n; i++) {
+      const { nodeId } = await cdp.send('DOM.querySelector', { nodeId: doc.root.nodeId, selector: `[data-pp="${i}"]` });
+      if (!nodeId) continue;
+      const before = await page.evaluate((i) => window.__look(i), i);
+      await cdp.send('CSS.forcePseudoState', { nodeId, forcedPseudoClasses: ['active'] });
+      const after = await page.evaluate((i) => window.__look(i), i);
+      await cdp.send('CSS.forcePseudoState', { nodeId, forcedPseudoClasses: [] });
+      if (before === after) quiet.push(await page.evaluate(([i, name]) => { const el = document.querySelector(`[data-pp="${i}"]`); return `${name}: ${el.tagName.toLowerCase()}.${String(el.className).trim().split(/\s+/).join('.')} "${el.textContent.replace(/\s+/g, ' ').trim().slice(0, 30)}"`; }, [i, name]));
+    }
+    await page.evaluate(() => { document.querySelectorAll('[data-pp]').forEach((x) => x.removeAttribute('data-pp')); window.GH.ui.closeSheets(); });
+    await settle(400);
+  }
+  await cdp.detach();
+  check(`each of the ${seen} tappable parts on the tabs and a health number's sheet answers a press`, seen > 100 && quiet.length === 0, quiet.slice(0, 8));
+}
+
 /* ---------------------------------------------------------------- reduced motion */
 section('Reduced motion');
 {
@@ -825,6 +1374,33 @@ section('Reduced motion');
   check('a route change: no exit layer, a short fade (opacity only)', r.layer === 0 && (r.props === '' || r.props === 'opacity') && r.ms <= 150, r);
   check('lists change at once: no glides, removed blocks go at once', r.listAnims === 0 && r.removedNow, r);
   check('collapse: a short fade only, then it goes', r.collapseProps === 'opacity' && r.collapseMs <= 150 && r.collapsed, r);
+  // The moments: nothing travels, pops or fills; a number is simply set; the player uses its own
+  // short fades (or none).
+  const mo = await page.evaluate(async () => {
+    const U = window.GH.ui, M = U.motion, m = window.__m;
+    const out = {};
+    U.go('plan');
+    await M.settled();
+    U.go('today');
+    await M.settled();
+    const bar = document.querySelector('#screen [data-key="protein"] .rf-progress');
+    out.bar = bar.style.getPropertyValue('--rf-value').trim() !== '0' && bar.querySelector('.rf-progress-fill').style.transition !== 'none';
+    const card = document.querySelector('#screen .card');
+    out.travel = M.travel(card, document.querySelector('#screen .rf-large-title'));
+    out.copies = document.querySelectorAll('.motion-copy').length;
+    M.beat(card); M.land([card]);
+    out.anims = m.anims(card).length;
+    const n = document.createElement('span');
+    document.body.appendChild(n);
+    n.textContent = '1';
+    M.count(n, '2', 1);
+    out.count = n.textContent === '2' && n.children.length === 0;
+    n.remove();
+    out.scene = M.scene(document.querySelector('.player'));
+    out.enter = M.enterPlayer(document.querySelector('.player'));
+    return out;
+  });
+  check('the moments under reduced motion: bars are simply there, nothing travels, pops or lands, a number is set, and the player keeps its own short fades', mo.bar && mo.travel === false && mo.copies === 0 && mo.anims === 0 && mo.count && mo.scene === null && mo.enter === false, mo);
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   await wait(100);
 }

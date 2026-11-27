@@ -44,6 +44,8 @@
   .scan p { margin: 0; color: var(--muted); }
   .qr { width: min(100%, 280px); aspect-ratio: 1; padding: 10px; border-radius: 22px; background: #fff; box-shadow: inset 0 0 0 1px rgb(0 0 0 / .08); }
   .qr svg { display: block; width: 100%; height: 100%; }
+  .scan .code { display: flex; flex-wrap: wrap; justify-content: center; gap: 2px 12px; color: var(--label); font: 600 17px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace; letter-spacing: .04em; }
+  .code span { white-space: nowrap; }
   .fine { margin: 0 4px; font-size: 13px; color: var(--muted); text-align: center; }
   .error h1 { font-size: 24px; }
   .error p { margin: 8px 0 0; color: var(--muted); }
@@ -72,6 +74,10 @@
     <div class="qr" id="qr"></div>
     <p>Gradient Health is an Android app. On your phone, open Your plans, then Add a shared plan, and scan this code.</p>
   </section>
+  <section class="card scan" id="code" hidden>
+    <p class="code" id="codeText"></p>
+    <p>Or type this code into the app: open Your plans, then Add a shared plan.</p>
+  </section>
   <p class="fine">Your device reads the plan from the link. Nothing is sent anywhere, and there are no trackers.</p>
 </main>
 <script>
@@ -86,7 +92,95 @@
   var GET = 'https://github.com/ShadowsDistant/gradient-health/releases/latest';
   var $ = function (id) { return document.getElementById(id); };
   var el = function (tag, text, cls) { var e = document.createElement(tag); if (text != null) e.textContent = text; if (cls) e.className = cls; return e; };
+  /*@CODE*/
   var clean = function (s, n) { return String(s == null ? '' : s).replace(/[\u0000-\u001f\u007f-\u009f​-‏‪-‮⁦-⁩]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, n); };
+  // The plan as a plan code (GH1A2B3C…) to type into the app, written the way the app writes it:
+  // src/plancode.js, format 1, which is fixed for good. a: the link's packed plan. MOVES: each id's
+  // [name, group, held, number]. '' when the link holds something the app would have to guess at.
+  // test/customplan.mjs holds this to the app's own code for a few hundred plans.
+  function planCode(a, MOVES) {
+    var ABC = '0123456789ABCDEFGHJKMNPQRSTVWXYZ', MARKS = '0123456789\'-,.&+/()!?:#%"@*=;_\u2019\u2013';
+    var sym = [], acc = 0, fill = 0;
+    var put = function (v, bits) { for (var i = bits - 1; i >= 0; i--) { acc = (acc << 1) | ((v >>> i) & 1); if (++fill === 5) { sym.push(acc); acc = 0; fill = 0; } } };
+    var num = function (x) { return Math.round(Number(x)); };
+    var within = function (v, lo, hi) { return Math.max(lo, Math.min(hi, v)); };
+    var text = function (s) {
+      var five = [], bytes = new TextEncoder().encode(s), i, ch, k, up;
+      for (i = 0; five && i < s.length; i++) {
+        ch = s.charAt(i); up = ch >= 'A' && ch <= 'Z';
+        if (ch === ' ' && s.charAt(i + 1) >= 'A' && s.charAt(i + 1) <= 'Z') five.push(29, s.charCodeAt(++i) - 65);
+        else if (ch === ' ') five.push(26);
+        else if (up || (ch >= 'a' && ch <= 'z')) { if (up !== (i === 0)) five.push(27); five.push((s.charCodeAt(i) | 32) - 97); }
+        else { k = MARKS.indexOf(ch); if (k < 0) five = null; else five.push(28, k); }
+      }
+      if (five && five.length < 64 && 6 + five.length * 5 <= 7 + bytes.length * 8) { put(0, 1); put(five.length, 6); for (i = 0; i < five.length; i++) put(five[i], 5); }
+      else { put(1, 1); put(bytes.length, 7); for (i = 0; i < bytes.length; i++) put(bytes[i], 8); }
+    };
+    // A day's own title, from its muscles, as the app names a day nobody named.
+    var auto = function (items) {
+      var names = [];
+      items.forEach(function (it) { var g = it.m[1] === 'biceps' || it.m[1] === 'triceps' ? 'arms' : String(it.m[1]).toLowerCase(); if (names.indexOf(g) < 0) names.push(g); });
+      var s = names.length === 1 ? names[0] : names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1];
+      return s.charAt(0).toUpperCase() + s.slice(1);
+    };
+    // The plan as the app would keep it: its own moves, numbers in range, days with something in them.
+    var days = [], guess = false;
+    (Array.isArray(a) && Array.isArray(a[4]) ? a[4] : []).forEach(function (d) {
+      var items = [];
+      (Array.isArray(d) ? d.slice(1) : []).forEach(function (x) {
+        var id = Array.isArray(x) ? String(x[0] || '') : '';
+        var m = Object.prototype.hasOwnProperty.call(MOVES, id) ? MOVES[id] : null;
+        if (!m) return;
+        var sets = num(x[1]), amt = num(x[2]), rest = x[3] == null || x[3] === '' ? NaN : num(x[3]);
+        if (!(m[3] >= 0) || !isFinite(amt)) { guess = true; return; }
+        items.push({ m: m, sets: isFinite(sets) ? within(sets, 1, 10) : 3, amt: m[2] ? within(amt, 5, 600) : within(amt, 1, 100), rest: isFinite(rest) ? within(rest, 0, 300) : null });
+      });
+      if (items.length) days.push({ title: clean(d[0], 30), items: items.slice(0, 12) });
+    });
+    days = days.slice(0, 6);
+    if (guess || !days.length) return '';
+    var wd = Array.isArray(a[3]) ? a[3].map(function (x) { var v = num(x); return isFinite(v) ? within(v, 0, 6) : -1; }) : null;
+    if (wd && (wd.length !== days.length || wd.some(function (x, i) { return x < 0 || wd.indexOf(x) !== i; }))) wd = null;
+    var name = clean(a[0], 40) || 'My plan';
+    var own = days.length === 1 ? (days[0].title || auto(days[0].items)).slice(0, 40) : 'My plan';
+    var rests = days.some(function (d) { return d.items.some(function (it) { return it.rest != null; }); });
+    put(1, 5); put(days.length - 1, 3);
+    put(wd ? 1 : 0, 1);
+    if (wd) put(wd.reduce(function (mask, d) { return mask | (64 >> d); }, 0), 7);
+    put(name !== own ? 1 : 0, 1);
+    if (name !== own) text(name === 'My plan' ? '' : name);
+    put(rests ? 1 : 0, 1);
+    days.forEach(function (d) {
+      var titled = !!d.title && d.title !== auto(d.items);
+      put(d.items.length - 1, 4);
+      put(titled ? 1 : 0, 1);
+      if (titled) text(d.title);
+      d.items.forEach(function (it) {
+        var k = it.m[3];
+        if (k < 511) put(k, 9); else { put(511, 9); put(k - 511, 9); }
+        k = [3, 2, 4].indexOf(it.sets);
+        if (k >= 0) put(k, 2); else { put(3, 2); put([1, 5, 6, 7, 8, 9, 10].indexOf(it.sets), 3); }
+        k = [5, 6, 8, 10, 12, 15, 20, 30].indexOf(it.amt);
+        if (k >= 0) put(k, 4);
+        else if (it.amt <= 32) { put(2, 2); put(it.amt - 1, 5); }
+        else if (it.amt % 5 === 0 && it.amt <= 160) { put(6, 3); put(it.amt / 5 - 1, 5); }
+        else { put(7, 3); put(it.amt - 1, 10); }
+        if (!rests) return;
+        put(it.rest != null ? 1 : 0, 1);
+        if (it.rest == null) return;
+        k = [0, 15, 30, 45, 60, 75, 90, 120, 150, 180, 240, 300, 10, 20, 40].indexOf(it.rest);
+        if (k >= 0) put(k, 4); else { put(15, 4); put(it.rest, 9); }
+      });
+    });
+    while (fill) put(0, 1);
+    while ((sym.length + 6) % 4) sym.push(0);
+    var crc = 0xfffff;
+    sym.forEach(function (v) { for (var i = 4; i >= 0; i--) { var bit = ((crc >>> 19) ^ (v >>> i)) & 1; crc = (crc << 1) & 0xfffff; if (bit) crc ^= 0x80069; } });
+    crc ^= 0xfffff;
+    sym.push(crc >>> 15, (crc >>> 10) & 31, (crc >>> 5) & 31, crc & 31);
+    return 'GH' + sym.map(function (v) { return ABC.charAt(v); }).join('');
+  }
+  /*@/CODE*/
 
   function fail(title, text) {
     $('errTitle').textContent = title;
@@ -160,7 +254,16 @@
   if (v > 1) { fail('This plan needs a newer Gradient Health', 'Update the app, then open the link again.'); return; }
   var body = bytes.subarray(1);
   var ready = bytes[0] & 0x80 ? (typeof DecompressionStream === 'function' ? inflate(body) : Promise.reject(new Error('old'))) : Promise.resolve(body);
-  ready.then(function (b) { show(JSON.parse(new TextDecoder().decode(b))); }).catch(function (e) {
+  ready.then(function (b) {
+    var a = JSON.parse(new TextDecoder().decode(b));
+    show(a);
+    // The plan's code, in its groups of four, for someone who'd rather type than scan.
+    var code = '';
+    try { code = planCode(a, MOVES); } catch (e) { code = ''; }
+    if (!code) return;
+    code.match(/.{4}/g).forEach(function (g) { $('codeText').appendChild(el('span', g)); });
+    $('code').hidden = false;
+  }).catch(function (e) {
     if (e && e.message === 'old') fail('This browser can\'t show the plan', 'Open the link in Gradient Health, or in an up-to-date browser.');
     else fail('This link doesn\'t hold a plan', 'Part of it may be missing. Ask for the link again.');
   });

@@ -261,7 +261,8 @@ section('Rests: sets first, then 90 s on its own when there\'s time');
   check('another goal: the cool-down comes first, then 90 s on its own', ot.coolFirst && !ot.restFirst && !ot.over, ot);
   const other = day0({ age: 35, goals: ['consistency'], days: 3, minutes: 45, prefs: { supersets: false } });
   const o2 = other.fitTo(B.estimate(other.S, other.raw().session) + 15);
-  check('and with time to spare, everything done on its own rests 90 s or more', o2.items.filter((it) => main(it) && !it.superset).every((it) => it.rest >= 90), o2.items.map((it) => `${it.moveId}@${it.rest}`));
+  // (1.15: but an arm exercise done one arm at a time keeps 30 s: each arm rests through the other's set.)
+  check('and with time to spare, everything done on its own rests 90 s or more', o2.items.filter((it) => main(it) && !it.superset && !(it.uni && ['biceps', 'triceps'].includes(it.group))).every((it) => it.rest >= 90), o2.items.map((it) => `${it.moveId}@${it.rest}`));
   // Supersets keep 60 s whatever the time.
   const pairs = day0({ age: 35, goals: ['arms', 'chest'], days: 3, minutes: 45 });
   const p1 = pairs.fitTo(B.estimate(pairs.S, pairs.raw().session) + 10);
@@ -435,13 +436,20 @@ section('Rules epoch: weeks before 1.13\'s rules replay as they were');
     const items = log ? log.items.map((it) => it.moveId) : B.buildSession(S, x.day, x.tpl, { cal, noReadiness: true }).items.map(mark);
     return `${B.dayStr(x.day).slice(5)} ${x.units.join('+')}: ${items.join(' ')}`;
   });
-  const legDays = (S, cal, ws) => cal.weeks[ws].sessions.filter((x) => !x.dropped && x.day != null && x.units.includes('legs')).map((x) => B.buildSession(S, x.day, x.tpl, { cal, noReadiness: true }));
+  // (The days that train legs: in 1.15's weeks a day of the split's with legs in it may hold none
+  // of their sets, when the week's few leg sets go to another of their days as 2 together.)
+  const legDays = (S, cal, ws) => cal.weeks[ws].sessions.filter((x) => !x.dropped && x.day != null && x.units.includes('legs')).map((x) => B.buildSession(S, x.day, x.tpl, { cal, noReadiness: true }))
+    .filter((s) => s.items.some((it) => it.group === 'legs' || it.power));
   const fastDays = (list) => list.filter((s) => s.items.some((it) => it.power)).length;
   for (const [name, p] of Object.entries(PEOPLE)) {
     // Two weeks done under 1.12's rules and this week begun (Monday and Tuesday), 1.13 arriving on
     // Wednesday: the rules start next Monday, D0 + 7.
-    const S = B.newState(Object.assign({ units: 'lb', weightKg: 75 }, p), null, D0 - 14);
+    // (A state from before 1.15 too: its ladders started as they did then, and 1.15's personal
+    // plans start with these rules, so these weeks are 1.12's still.)
+    const S = B.newState(Object.assign({ units: 'lb', weightKg: 75, legacyPlan: true }, p), null, D0 - 14);
+    delete S.profile.legacyPlan;
     S.rulesFrom = D0 + 7;
+    S.personalFrom = D0 + 7;
     for (let d = D0 - 14; d < D0 + 2; d++) {
       const plan = B.todayPlan(S, d);
       if (plan.type === 'workout') {
@@ -472,6 +480,170 @@ section('Rules epoch: weeks before 1.13\'s rules replay as they were');
   }
 }
 
+/* ------------------------------------------------------------------ 1.15's personal plans epoch */
+section('Personal plans epoch: weeks before 1.15 replay as 1.14 planned them');
+{
+  // What 1.14 planned for these people (the same history, built day by day): each session's units,
+  // moves, sets and reps, the logged ones as done and the rest as planned.
+  const HOME = { db: [], kb: [], ball: false, ballLb: null, ballSlam: false, band: false, bar: false, chair: true, wall: true, towel: true, table: false, door: false };
+  const PEOPLE = {
+    owner: { sex: 'male', weightKg: 68, heightCm: 183, goals: ['abs', 'arms'], experience: 'never', days: 3, minutes: 20, lead: { arm: 'L' }, equipment: Object.assign({}, HOME, { db: [10] }) },
+    owner4: { sex: 'male', weightKg: 68, heightCm: 183, goals: ['abs', 'arms'], experience: 'onoff', days: 4, minutes: 25, equipment: Object.assign({}, HOME, { db: [10] }) },
+    kit: { sex: 'male', weightKg: 82, goals: ['chest', 'legs'], experience: '1to3', recentActivity: 'some', days: 4, minutes: 45, equipment: Object.assign({}, HOME, { db: [10, 20, 30], kb: [35], band: true, door: true, bar: true, table: true }) },
+    nokit: { sex: 'female', weightKg: 62, goals: ['fat', 'abs'], experience: 'never', days: 3, minutes: 30, equipment: HOME },
+    show55: { age: 55, sex: 'female', weightKg: 70, goals: ['consistency'], experience: 'onoff', days: 2, minutes: 25, equipment: Object.assign({}, HOME, { db: [8] }) },
+    gym: { sex: 'male', weightKg: 80, units: 'kg', goals: ['arms', 'chest'], experience: '3plus', recentActivity: 'some', days: 5, minutes: 60, where: 'gym', gym: B.gymPreset('full', 'kg'), equipment: HOME },
+  };
+  const V114 = {
+    owner: {'2026-09-14': ['09-14 arms+back+abs: curl_hammer 1x14, rear_towel 1x20, tri_skull 1x12, row_db 1x14, abl_crunch 1x12, hammer_1arm 1x14', '09-16 arms+legs+shoulders+abs: tri_skull 1x14, hg_deadlift 1x15, sq_goblet 1x15, press_db 1x10, rot_russian 1x16, hammer_1arm 1x16', '09-18 arms+chest+abs: tri_skull 1x16, push_incline 2x10, ab_deadbug 2x8, hammer_1arm 1x16'], '2026-09-21': ['09-21 arms+back+abs: curl_hammer 1x16, rear_towel 1x25, tri_skull 2x18, row_db 1x16, rot_russian 1x18, hammer_1arm 1x16', '09-23 arms+legs+shoulders+abs: sq_goblet 1x17, press_db 1x11, gl_bridge 1x15, ab_deadbug 2x9, hammer_1arm 1x18', '09-25 arms+chest+abs: tri_skull 1x20, push_incline 2x11, side_knee 1x20, hammer_1arm 1x18'], '2026-09-28': ['09-28 arms+back+abs: row_db 1x18, rear_towel 1x30, ab_deadbug 2x10, rot_russian 2x20, hammer_1arm 0x18', '09-30 arms+legs+shoulders+abs: tri_skull 3x22, sq_goblet 1x19, ham_walkout 1x6, press_db 1x12, side_knee 2x25', '10-02 arms+chest+abs: curl_hammer 5x18, push_incline 2x12, tri_skull 1x22']},
+    owner4: {'2026-09-14': ['09-14 arms+chest+abs: curl_hammer 2x14, push_incline 3x10, tri_skull 2x12, abl_crunch 2x12', '09-15 arms+shoulders+abs: curl_hammer 2x16, tri_skull 1x14, press_db 1x10, raise 1x14, rot_russian 1x16', '09-17 arms+legs: curl_hammer 1x18, sq_goblet 2x15, tri_skull 2x16, hg_deadlift 1x15', '09-18 back+abs: row_db 2x14, rear_towel 1x20, back_birddog 1x8, ab_deadbug 2x8'], '2026-09-21': ['09-21 arms+chest+abs: curl_hammer 2x20, push_incline 3x11, tri_skull 2x18, rot_russian 2x18', '09-22 arms+shoulders+abs: curl_hammer 2x22, tri_skull 2x20, press_db 1x11, raise 1x16, ab_deadbug 2x9', '09-24 arms+legs: curl_hammer 1x24, sq_goblet 1x17, tri_skull 1x22, gl_bridge 1x15', '09-25 back+abs: row_db 2x16, rear_towel 1x25, back_birddog 1x9, side_knee 2x20'], '2026-09-28': ['09-28 arms+chest+abs: curl_hammer 4x26, push_incline 2x12, ab_deadbug 3x10, rot_russian 2x20', '09-29 arms+shoulders+abs: curl_hammer 2x28, tri_skull 4x24, press_db 1x12, side_knee 2x25', '10-01 arms+legs: curl_hammer 3x30, sq_goblet 1x19, tri_skull 4x25, ham_walkout 1x6', '10-02 back+abs: row_db 2x18, rear_towel 1x30, back_birddog 1x10, ab_deadbug 3x11, side_knee 3x30']},
+    kit: {'2026-09-14': ['09-14 arms: curl_std 5x12, tri_oh 5x12', '09-15 chest+legs+back: push_std 3x8, row_db 1x14, sq_goblet 1x15, pull_neg 1x3, hg_rdl 2x10, rear_fly 1x14, calf_wall_slow 1x12', '09-17 chest+legs+shoulders: push_std 3x9, gl_kbbridge 2x15, sq_goblet 2x17, raise 2x14, calf_wall_slow 1x14, press_db 2x10', '09-18 chest+back+abs: push_std 3x10, row_db 1x16, rear_fly 1x16, ab_revcrunch 3x10, side_carry 2x30'], '2026-09-21': ['09-21 arms: curl_std 6x14, tri_oh 6x14', '09-22 chest+legs+back: push_std 4x11, row_db 2x18, chest_press 2x14, sq_goblet 3x19, gl_kbbridge 4x17, pull_neg 2x4, calf_wall_slow 1x16, rear_fly 1x18', '09-24 chest+legs+shoulders: push_std 4x12, ham_slide 4x8, chest_press 1x16, calf_wall_slow 1x18, sq_goblet 4x21, raise 3x16, press_db 3x11', '09-25 chest+back+abs: push_std 4x14, row_db 1x20, chest_press 2x18, pull_neg 2x5, rear_fly 1x20, abl_kb 5x12, rot_russian 4x16'], '2026-09-28': ['09-28 arms: curl_std 6x16, tri_oh 6x16', '09-29 chest+legs+back: push_std 4x16, row_db 2x22, chest_press 2x20, sq_goblet 4x23, ham_slide 5x9, pull_neg 2x6, calf_wall_slow 1x20, rear_fly 1x22', '10-01 chest+legs+shoulders: push_std 4x18, hg_rdl 3x11, chest_press 2x22, calf_wall_slow 1x22, sq_goblet 4x25, raise 2x18, press_db 2x12', '10-02 chest+back+abs: push_std 4x18, row_db 1x24, chest_press 2x22, pull_neg 2x7, rear_fly 1x24, ab_revcrunch 5x11, rot_russian 4x18']},
+    nokit: {'2026-09-14': ['09-14 arms+abs: curl_towel 3x20, tri_dip_bent 3x8, abl_crunch 2x12', '09-16 back+shoulders+abs: row_door 2x10, press_pike_incline 1x8, rear_towel 1x20, raise_wall_iso 1x20, back_birddog 1x8, rot_russian 1x16', '09-18 chest+legs+abs: push_incline 3x10, sq_bw 2x15, hg_bridge 1x15, ab_deadbug 2x8'], '2026-09-21': ['09-21 arms+abs: curl_towel 3x25, tri_dip_bent 3x9, rot_russian 2x18', '09-23 back+shoulders+abs: row_door 2x11, press_pike_incline 1x9, rear_towel 1x25, raise_wall_iso 1x25, back_birddog 1x9, ab_deadbug 2x9', '09-25 chest+legs+abs: push_incline 3x11, sq_bw 2x17, gl_bridge 1x15, side_knee 2x20'], '2026-09-28': ['09-28 arms+abs: curl_towel 2x30, tri_dip_bent 5x10, ab_deadbug 3x10, rot_russian 3x20', '09-30 back+shoulders+abs: row_door 2x12, press_pike_incline 2x10, rear_towel 2x30, raise_wall_iso 1x30, back_birddog 2x10, abl_crunch 2x14, side_knee 1x25', '10-02 chest+legs+abs: push_incline 4x12, sq_bw 3x19, ham_walkout 2x6, ab_deadbug 2x11, side_knee 2x25']},
+    show55: {'2026-09-14': ['09-14 chest+back+arms+shoulders: bal_tandem 2x15, push_incline 3x10, row_db 1x14, rear_towel 1x20, press_db 1x10, curl_hammer 2x14, tri_skull 1x12', '09-17 legs+abs: bal_tandem 2x20, sq_goblet_power 1x15, row_db 1x15, hg_deadlift 2x15, rear_towel 1x25, ab_deadbug 2x8, side_knee 1x20'], '2026-09-21': ['09-21 chest+back+arms+shoulders: bal_tandem 2x25, push_incline 2x11, row_db 1x16, rear_towel 1x30, press_db 1x11, curl_hammer 3x15, tri_skull 1x13', '09-24 legs+abs: bal_tandem 2x30, sq_goblet_power 1x15, row_db 1x17, gl_bridge 2x15, abl_crunch 2x12, rot_russian 1x16'], '2026-09-28': ['09-28 chest+back+arms+shoulders: bal_tandem 2x35, push_incline 3x12, row_db 1x18, rear_towel 1x35, press_db 1x12, curl_hammer 2x16, tri_skull 1x14', '10-01 legs+abs: bal_tandem~ 2x40, sq_goblet_power! 1x15, row_db 1x19, ham_walkout 2x6, rear_towel 1x40, ab_deadbug 2x9, rot_russian 1x17']},
+    gym: {'2026-09-14': ['09-14 chest+arms: bench_bb 4x8, curl_bb 6x10, incline_db 2x8, pushdown_cable 6x12', '09-15 legs+back: squat_bb 4x8, pulldown 2x8, rdl_bb 3x8, row_cable 3x8, leg_ext 2x12, face_pull 1x12', '09-16 chest+arms: bench_bb 4x9, curl_bb 6x11, incline_db 2x9, pushdown_cable 6x13', '09-18 arms+abs: curl_bb 6x12, pushdown_cable 6x14, cable_crunch 5x12, side_plank 4x20', '09-19 chest+back+shoulders: bench_bb 4x10, pulldown 2x9, incline_db 2x10, row_cable 3x9, face_pull 1x13, ohp_db 5x8, raise_cable 4x12'], '2026-09-21': ['09-21 chest+arms: bench_bb 4x11, curl_bb 6x13, incline_db 2x11, pushdown_cable 6x15', '09-22 legs+back: squat_bb 4x9, pulldown 2x10, thrust_bb 3x10, row_cable 3x10, leg_ext 2x13, face_pull 1x14', '09-23 chest+arms: bench_bb 5x12, curl_bb 6x14, incline_db 2x12, pushdown_cable 6x16', '09-25 arms+abs: curl_bb 6x15, pushdown_cable 6x17, cable_crunch 5x13, rot_russian_up 4x14', '09-26 chest+back+shoulders: bench_bb 5x6, pulldown 2x11, incline_db 2x6, row_cable 3x11, face_pull 1x15, ohp_db 5x9, raise_cable 4x13'], '2026-09-28': ['09-28 chest+arms: bench_bb 5x7, curl_bb 6x8, incline_db 2x7, pushdown_cable 6x18', '09-29 legs+back: squat_bb 4x10, pulldown 2x12, lunge_db 3x10, row_cable 3x12, leg_ext 2x14, face_pull 1x16', '09-30 chest+arms: bench_bb 5x8, curl_bb 6x9, incline_db 2x8, pushdown_cable 6x19', '10-02 arms+abs: curl_bb 6x9, pushdown_cable 6x19, cable_crunch 5x14, rot_russian_up 4x16', '10-03 chest+back+shoulders: bench_bb 4x8, pulldown 2x6, incline_db 2x8, row_cable 3x6, face_pull 1x17, ohp_db 5x10, raise_cable 4x14']},
+  };
+  const real = Date.now;
+  {
+    // A 1.14 state: no personalFrom. The migration starts the personal plans the week after it first runs.
+    const S = person({ goals: ['abs', 'arms'], days: 3 }, D0 - 14);
+    delete S.personalFrom;
+    Date.now = () => (D0 + 2) * B.DAY_MS + 12 * 3600000;
+    for (const fn of GH.migrations || []) fn(S);
+    Date.now = real;
+    check('the migration starts personal plans the week after it first runs', S.personalFrom === D0 + 7, S.personalFrom);
+    const once = S.personalFrom;
+    for (const fn of GH.migrations || []) fn(S);
+    check('and only once', S.personalFrom === once);
+    check('a new state has them from its first week', person({}).personalFrom === B.weekStart(D0) && person({}, D0 + 3).personalFrom === D0);
+    check('the weeks before are told apart', !B.personal(S, D0 + 6) && B.personal(S, D0 + 7) && B.personal(person({}), D0));
+  }
+  const mark = (it) => `${it.moveId}${it.power ? '!' : ''}${it.skill ? '~' : ''} ${it.sets}x${it.target}`;
+  const digest = (S, cal, ws) => cal.weeks[ws].sessions.filter((x) => !x.dropped && x.day != null).map((x) => {
+    const log = S.log.find((l) => l.type === 'workout' && l.day === x.day);
+    const items = log ? log.items.map((it) => `${it.moveId} ${new Set(it.sets.map((q) => q.set)).size}x${it.target}`) : B.buildSession(S, x.day, x.tpl, { cal, noReadiness: true }).items.map(mark);
+    return `${B.dayStr(x.day).slice(5)} ${x.units.join('+')}: ${items.join(', ')}`;
+  });
+  for (const [name, p] of Object.entries(PEOPLE)) {
+    // Two weeks done under 1.14 and this week begun (Monday and Tuesday), 1.15 arriving on Wednesday:
+    // personal plans start next Monday, D0 + 7.
+    // (The state as 1.14 made it: its ladders on 1.14's starting rungs.)
+    const S = B.newState(Object.assign({ units: 'lb', legacyPlan: true }, p), null, D0 - 14);
+    delete S.profile.legacyPlan;
+    S.personalFrom = D0 + 7;
+    for (let d = D0 - 14; d < D0 + 2; d++) {
+      const plan = B.todayPlan(S, d);
+      if (plan.type === 'workout') {
+        B.startWorkout(S, d, { now: d * B.DAY_MS + 17 * 3600000 });
+        for (let g = 0; S.active && S.active.idx < S.active.steps.length && g < 800; g++) { const st = S.active.steps[S.active.idx]; B.completeStep(S, st.kind === 'test' ? { value: 12 } : {}); if (st.askRir) B.setRir(S, st.item, '12'); }
+        B.finishWorkout(S, { rating: 'right', now: d * B.DAY_MS + 18 * 3600000 });
+      } else if (plan.type === 'light') { B.logLight(S, d, 'walk', true); B.logLight(S, d, 'mobility', true); }
+    }
+    const cal = B.calendar(S, D0 + 2);
+    const got = {};
+    for (const ws of [D0 - 14, D0 - 7, D0]) got[B.dayStr(ws)] = digest(S, cal, ws);
+    const first = Object.keys(got).flatMap((ws) => got[ws].map((x, i) => (x === V114[name][ws][i] ? null : `${x}  (1.14: ${V114[name][ws][i]})`))).filter(Boolean)[0];
+    check(`${name}: the weeks before, and the week under way, replay exactly as 1.14 planned them`, JSON.stringify(got) === JSON.stringify(V114[name]), first);
+  }
+}
+
+/* ------------------------------------------------------------------ 1.15's acceptance test */
+section('1.15: the answers the release was built for');
+{
+  // A man of 68 kg and 183 cm who wants visible abs and bigger arms, at home with one 10 lb
+  // dumbbell, the left arm the weaker, eating little protein and fruit. On 1.14 his plan held six
+  // sets of one curl in a day, a goal muscle once a week, nine one-set exercises in 25 minutes,
+  // squats and rows with the 10 lb dumbbell and ab work that doesn't build abs. Checked in his
+  // first week (easing in) and his fourth (three weeks done as planned, his left arm still 2 reps
+  // behind at the test every two weeks), for 3 days of 20 minutes and 4 of 25, never trained and
+  // now and then.
+  const OWNER = { sex: 'male', weightKg: 68, heightCm: 183, goals: ['abs', 'arms'], units: 'lb', lead: { arm: 'L' }, eats: { protein: 'low', produce: 'low' }, equipment: Object.assign({}, HOUSE, { db: [10] }) };
+  const doWeeks = (S, from, to) => {
+    for (let d = from; d < to; d++) {
+      const plan = B.todayPlan(S, d);
+      if (plan.type === 'workout') {
+        B.startWorkout(S, d, { now: d * B.DAY_MS + 17 * 3600000 });
+        for (let g = 0; S.active && S.active.idx < S.active.steps.length && g < 800; g++) { const st = S.active.steps[S.active.idx]; B.completeStep(S, st.kind === 'test' ? { value: st.side === 'L' ? 10 : 12 } : {}); if (st.askRir) B.setRir(S, st.item, '12'); }
+        B.finishWorkout(S, { rating: 'right', now: d * B.DAY_MS + 18 * 3600000 });
+      } else if (plan.type === 'light') { B.logLight(S, d, 'walk', true); B.logLight(S, d, 'mobility', true); }
+    }
+  };
+  const weekOf = (S, ws) => { const cal = B.calendar(S, ws); return cal.weeks[ws].sessions.filter((x) => !x.dropped && x.day != null).map((x) => B.buildSession(S, x.day, x.tpl, { cal, noReadiness: true })); };
+  const fails = [];
+  const x0 = (built) => built[0].day;
+  const show = (built) => built.map((x) => x.items.map((it) => `${it.moveId}×${it.sets}`).join(' ')).join(' | ');
+  for (const [days, minutes, most] of [[3, 20, 5], [4, 25, 6]]) {
+    for (const experience of ['never', 'onoff']) {
+      const S = B.newState(Object.assign({}, OWNER, { days, minutes, experience }), null, D0);
+      for (const wk of [0, 3]) {
+        if (wk) doWeeks(S, D0, D0 + 7 * wk);
+        const ws = D0 + 7 * wk;
+        const built = weekOf(S, ws);
+        const wp = O.weekPlan(S, ws);
+        const name = `${days}×${minutes} ${experience} week ${wk + 1}`;
+        const no = (what, detail) => fails.push(`${name}: ${what} (${detail || show(built)})`);
+        const items = built.flatMap((x) => x.items.filter((it) => !it.skill));
+        // Biceps, triceps and abs each on two days or more.
+        for (const g of ['biceps', 'triceps', 'abs']) { const on = built.filter((x) => x.items.some((it) => it.group === g)).length; if (on < 2) no(`${g} on ${on} day`); }
+        // No exercise over 4 sets; no more than 5 exercises in 20 minutes, 6 in 25.
+        if (items.some((it) => it.sets > 4)) no('an exercise over 4 sets');
+        if (built.some((x) => x.items.filter((it) => !it.skill).length > most)) no(`more than ${most} exercises in a session`);
+        // The squat, the row and the deadlift aren't done with the 10 lb dumbbell (nor is anything
+        // on a weight that's too light to count for him).
+        const loaded = items.filter((it) => it.load && it.load.kg > 0);
+        if (loaded.some((it) => ['legs', 'back'].includes(it.group))) no('a leg or back exercise with the 10 lb dumbbell');
+        if (loaded.some((it) => (B.weightFit(S, it.moveId, x0(built), it.load.kg) || {}).fit === 'light')) no('a set on a weight too light to count');
+        // Two different exercises that load the abs through a range (a crunch, a reverse crunch, a
+        // leg raise), not holds or dead bugs.
+        const abs = [...new Set(items.filter((it) => it.group === 'abs' && ['abs', 'absLoad'].includes(it.fam) && !it.timed && it.moveId !== 'ab_deadbug').map((it) => it.moveId))];
+        if (abs.length < 2) no(`${abs.length} ab exercise that loads the muscle`, abs.join());
+        // The week's sets, counting half for sets that train a muscle in passing (push-ups for the
+        // triceps, rows for the biceps), inside the range for someone starting out: 4 at least
+        // (the least that still builds), 12 at most in these first weeks (Pelland et al. 2026).
+        // (Counted here from the sessions, A5 of the 1.15 research: the plan counts only a top goal's
+        // own sets toward its minimum.)
+        const frac = (g) => built.flatMap((x) => x.items.concat(x.extras || [])).reduce((a, it) => a + (it.skill ? 0 : it.group === g ? it.sets : (M.MOVES[it.moveId].muscles || []).some((mu) => B.MUSCLE_GROUP[mu] === g) ? 0.5 * it.sets : 0), 0);
+        for (const g of ['biceps', 'triceps', 'abs']) { const e = frac(g); if (e < 4 - 1e-9 || e > 12 + 1e-9) no(`${g} at ${e} sets a week`, JSON.stringify(Object.fromEntries(['biceps', 'triceps', 'abs'].map((q) => [q, frac(q)])))); }
+        // Abs: 3 sets a session at most (about 60 crunch-type reps) and never on back-to-back days
+        // (Contreras & Schoenfeld 2011).
+        if (built.some((x) => x.items.filter((it) => it.group === 'abs').reduce((a, it) => a + it.sets, 0) > 3)) no('more than 3 sets of abs in a session');
+        const absDays = built.filter((x) => x.items.some((it) => it.group === 'abs')).map((x) => x.day);
+        if (absDays.some((d, i) => i > 0 && d - absDays[i - 1] === 1)) no('abs on back-to-back days', absDays.map((d) => B.dayStr(d)).join());
+        // An overhead extension in the week (it grows the triceps' long head most, Maeo et al. 2023).
+        if (!items.some((it) => /^tri_oh/.test(it.moveId))) no('no overhead extension');
+        // The weaker left arm: still behind at its tests, so every arm exercise with the dumbbell is
+        // one arm at a time, the left first, and the plan says so.
+        const facts = O.personalFacts(S, ws);
+        if (!S.catchup.arm.active) no('the left arm caught up in the test');
+        const arm = items.filter((it) => ['biceps', 'triceps'].includes(it.group) && it.load && it.load.key === 'db');
+        if (arm.some((it) => !it.uni)) no('an arm exercise with both arms at once', arm.map((it) => it.moveId).join());
+        const first = B.steps(S, built.find((x) => x.items.some((it) => it.uni && it.group === 'biceps'))).find((st) => st.kind === 'set' && st.item.uni);
+        if (!first || first.side !== 'L') no('the right arm goes first');
+        if (!facts.some((f) => f.id === 'side' && /left arm is the weaker one/.test(f.text))) no('Why this plan doesn\'t name the left arm', facts.map((f) => f.text).join(' / '));
+        // And the plan says which of his answers it used.
+        for (const id of ['goals', 'time', 'kit', 'eating', 'abs']) if (!facts.some((f) => f.id === id)) no(`Why this plan doesn't name ${id}`, facts.map((f) => f.id).join());
+      }
+    }
+  }
+  check('biceps, triceps and abs on two days or more, 4 sets an exercise at most, few exercises, no 10 lb squats or rows, two real ab exercises, a beginner\'s weekly sets, and the facts named', fails.length === 0, fails.slice(0, 6));
+  check('and for abs 3 sets a session on days apart, an overhead extension each week, the weaker left arm first and one arm at a time, and Why this plan saying so', fails.length === 0);
+  // What the eating answer changes, and for whom.
+  const base = Object.assign({}, OWNER, { days: 4, minutes: 25, experience: 'onoff' });
+  const low = B.programFor(Object.assign(B.defaultProfile(), base)), fed = B.programFor(Object.assign(B.defaultProfile(), base, { eats: { protein: 'most', produce: 'low' } })), teen = B.programFor(Object.assign(B.defaultProfile(), base, { age: 16 }));
+  check('little protein: the same weekly sets to start from, marked for the plan; not with enough protein, and not under 18', low.lowProtein === true && !fed.lowProtein && !teen.lowProtein && JSON.stringify(low.start) === JSON.stringify(fed.start));
+  const S1 = B.newState(base, null, D0), S2 = B.newState(Object.assign({}, base, { eats: { protein: 'most', produce: 'most' } }), null, D0);
+  doWeeks(S1, D0, D0 + 21); doWeeks(S2, D0, D0 + 21);
+  const w1 = O.weekPlan(S1, D0 + 21), w2 = O.weekPlan(S2, D0 + 21);
+  check('little protein: no sets past the week\'s target (a normal week, not more)', ['biceps', 'triceps', 'abs'].every((g) => w1.perGroup[g].boosted === w1.perGroup[g].target) && ['biceps', 'triceps', 'abs'].some((g) => w2.perGroup[g].boosted > w2.perGroup[g].target), [w1.perGroup.biceps, w2.perGroup.biceps]);
+  check('the food log stands in when there\'s no answer, and the answer wins when there is one', B.eatsOf({ eats: { protein: null, produce: null, logged: 'low' } }).from === 'log' && B.eatsOf({ eats: { protein: 'most', logged: 'low' } }).protein === 'most' && B.eatsOf({ age: 15, eats: { protein: 'low' } }).minor === true && B.eatsOf({}).protein === null);
+  // The same answers, the same plan: two fresh states, weeks apart in the making.
+  const dg = (S) => weekOf(S, D0).map((x) => x.items.map((it) => `${it.moveId} ${it.sets}x${it.target} ${it.rest}`).join(',')).join('|');
+  check('the same answers give the same plan', dg(B.newState(base, null, D0)) === dg(B.newState(JSON.parse(JSON.stringify(base)), null, D0)));
+  // A weight judged for the person: light, right or heavy.
+  const fit = (p, id, kg) => B.weightFit(B.newState(Object.assign({}, base, p), null, D0), id, D0, kg).fit;
+  check('weightFit: 10 lb is light for his squat and row and right for his curl; 40 lb is heavy for a curl; for a woman of 55 kg a 5 lb curl is right and 10 lb heavy',
+    fit({}, 'sq_goblet', 4.54) === 'light' && fit({}, 'row_db', 4.54) === 'light' && fit({}, 'curl_std', 4.54) === 'right' && fit({}, 'curl_std', 18.1) === 'heavy' && fit({ sex: 'female', weightKg: 55 }, 'curl_std', 2.27) === 'right' && fit({ sex: 'female', weightKg: 55 }, 'curl_std', 4.54) === 'heavy');
+}
+
 /* ------------------------------------------------------------------ caches */
 section('Caches');
 {
@@ -498,7 +670,9 @@ section('Caches');
   // brought a height in planned every week again, a moment after launch. Body weight doesn't (a gym
   // move's first load reads it).
   const w4 = O.weekPlan(S, D0);
-  Object.assign(S.profile, { heightCm: 181, name: 'Sam', sex: 'female', weightGoal: 'lose', sleepTypical: '7-8', sleepIrregular: true });
+  // (1.15: not sex any more. A weight is judged light or heavy by it too, brain.js weightFit, so a
+  // new answer plans the weeks again.)
+  Object.assign(S.profile, { heightCm: 181, name: 'Sam', weightGoal: 'lose', sleepTypical: '7-8', sleepIrregular: true });
   S.profile.protein = Object.assign({}, S.profile.protein, { quickG: 30 });
   S.profile.food = Object.assign({}, S.profile.food || {}, { mode: 'full', pace: 0.25 });
   check('a height, a name, food and protein settings or the sleep answers keep the week\'s plan', O.weekPlan(S, D0) === w4 && B.calendar(S, D0) === c3);

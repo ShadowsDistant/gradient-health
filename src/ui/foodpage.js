@@ -210,12 +210,14 @@
   // Only what's found (or listed) drawn again: the field, its caret and the keyboard's word in progress
   // are never touched. The rest is drawn again when the lists' switch comes or goes with the query.
   let shownQ = '';
-  function refreshResults() {
+  function refreshResults(animate) {
     if (!sheet || sheet.closed) return;
     const box = sheet.el.querySelector('.fd-results');
     if (!box || !query.trim() !== !shownQ) { refresh(); return; }
     shownQ = query.trim();
-    U.morph(box, resultsHtml(U.S));
+    // (animate: what's found online rises in under the rest, rather than popping in. Not while
+    // typing: a letter only patches.)
+    U.morph(box, resultsHtml(U.S), !!animate);
   }
   // Add food: on Recent (the foods you have most, first), with the meal picked at the top.
   function openAdd(day, meal) {
@@ -255,7 +257,7 @@
     const q = query.trim();
     if (!q || online.busy) return;
     online = { busy: true, items: null, error: null, q };
-    refreshResults();
+    refreshResults(true);
     try {
       const items = await GH.foodNet.search(q);
       online = { busy: false, items, error: null, q };
@@ -263,7 +265,7 @@
     } catch (e) {
       online = { busy: false, items: null, error: e.message || 'Online search didn\'t work. Try again in a minute.', q };
     }
-    refreshResults();
+    refreshResults(true);
   };
   function rememberOff(items) {
     const f = F().data(U.S);

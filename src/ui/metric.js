@@ -123,7 +123,9 @@
       return wrap(`${cell('Per week', U.esc(h.hm(s.total / weeks)), 'on average')}${cell('Active days', U.esc(String(s.n)), `of ${to - from + 1}`)}${cell('Longest', U.esc(f(s.max)), U.fmtDay(s.maxDay, false))}${cell('Total', U.esc(h.hm(s.total)))}`);
     }
     const change = s.change == null ? '–' : Math.abs(s.change) < 1e-9 ? 'None' : h.formatDelta(S, key, s.change, s.changeRel);
-    return wrap(`${cell('Average', U.metricNum(S, key, s.avg), m.per || '')}${cell('Change', U.esc(change), (to - from) < 7 ? 'first day to last' : 'first week to last')}${cell('Lowest', U.metricNum(S, key, s.min), U.fmtDay(s.minDay, false))}${cell('Highest', U.metricNum(S, key, s.max), U.fmtDay(s.maxDay, false))}`);
+    // Drawn as its neighbours are: the number, then a small unit ("−1 bpm", with a real minus sign).
+    const parts = (t) => `<span class="mv">${t.replace(/^-/, '−').split(' ').map((w) => (/\d/.test(w) ? `<span class="rf-num">${U.esc(w)}</span>` : `<small>${U.esc(w)}</small>`)).join('')}</span>`;
+    return wrap(`${cell('Average', U.metricNum(S, key, s.avg), m.per || '')}${cell('Change', /\d/.test(change) ? parts(change) : U.esc(change), (to - from) < 7 ? 'first day to last' : 'first week to last')}${cell('Lowest', U.metricNum(S, key, s.min), U.fmtDay(s.minDay, false))}${cell('Highest', U.metricNum(S, key, s.max), U.fmtDay(s.maxDay, false))}`);
   }
 
   // "3 bpm below your usual of 59": the latest value (or this week, for daily totals) against the usual.

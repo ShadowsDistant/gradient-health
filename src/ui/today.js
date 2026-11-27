@@ -35,7 +35,7 @@
     if (s.warmup.length) rows.push(`<li class="ex ex-muted"><span class="ex-tag is-art">${U.art('sun')}</span><span class="ex-name">Warm-up</span><span class="ex-meta">${s.warmup.map((w) => U.esc(w.name.toLowerCase())).join(', ')}</span></li>`);
     for (const t of s.tests || []) rows.push(`<li class="ex is-lead"><span class="ex-tag">${U.icon('layers', 'sm')}</span><button type="button" class="ex-name" data-act="moveInfo" data-arg="${t.moveId}">${U.esc(t.name)}</button><span class="ex-meta">${U.side(t.side)} first, max reps</span></li>`);
     for (const it of s.items) {
-      rows.push(`<li class="ex"><span class="ex-tag rf-num">${it.superset ? U.esc(it.superset) : ''}</span><button type="button" class="ex-name" data-act="moveInfo" data-arg="${it.moveId}">${U.esc(it.name)}${it.swappedFrom ? ` <span class="t-caption rf-muted">(swapped)</span>` : ''}</button><span class="ex-meta rf-num">${it.sets} × ${U.nb(U.target(it))}${it.uni ? ' each side' : ''}${it.power ? '&nbsp;· fast up' : ''}${it.load && it.load.label ? `&nbsp;· ${U.nb(it.load.label.replace(/ (dumbbells?|kettlebell)$/, ''))}` : ''}</span></li>`);
+      rows.push(`<li class="ex"><span class="ex-tag rf-num">${it.superset ? U.esc(it.superset) : ''}</span><button type="button" class="ex-name" data-act="moveInfo" data-arg="${it.moveId}">${U.esc(it.name)}${it.swappedFrom ? ` <span class="t-caption rf-muted">(swapped)</span>` : ''}</button><span class="ex-meta rf-num">${U.roll(it.sets)} × ${U.nb(U.target(it))}${it.uni ? ' each side' : ''}${it.power ? '&nbsp;· fast up' : ''}${it.load && it.load.label ? `&nbsp;· ${U.nb(it.load.label.replace(/ (dumbbells?|kettlebell)$/, ''))}` : ''}</span></li>`);
       for (const x of s.extras || []) if (x.fam === it.fam) rows.push(`<li class="ex is-lead"><span class="ex-tag">+1</span><button type="button" class="ex-name" data-act="moveInfo" data-arg="${x.moveId}">${U.esc(x.name)}</button><span class="ex-meta rf-num">${U.side(x.leadOnly || lead).toLowerCase()} only · ${U.esc(U.target(x))}</span></li>`);
     }
     for (const x of s.extras || []) if (!s.items.some((it) => it.fam === x.fam)) rows.push(`<li class="ex is-lead"><span class="ex-tag">+1</span><button type="button" class="ex-name" data-act="moveInfo" data-arg="${x.moveId}">${U.esc(x.name)}</button><span class="ex-meta rf-num">${U.side(x.leadOnly || lead).toLowerCase()} only · ${U.esc(U.target(x))}</span></li>`);
@@ -47,12 +47,17 @@
         ? `<li class="ex"><span class="ex-tag">${U.icon('heart', 'sm')}</span><button type="button" class="ex-name" data-act="moveInfo" data-arg="${U.esc(mb.moveId)}">${U.esc(mb.name)}</button><span class="ex-meta rf-num">Easy cardio · ${Math.max(1, Math.round(mb.target / 60))} min</span></li>`
         : `<li class="ex ex-muted"><span class="ex-tag is-art">${U.art('moon', 'sm')}</span><span class="ex-name">${U.esc(mb.name)}</span><span class="ex-meta">${mb.target} s</span></li>`);
     }
-    return `<ul class="ex-list">${rows.join('')}</ul>`;
+    // Each row keyed by its move (or its name), in a list that glides (data-flip): Short on time
+    // takes rows out from where they are and the rest move up, rather than the list being drawn again.
+    // (A move that's there twice, its extra set on one side, gets a second key.)
+    const had = {};
+    const key = (r, i) => { const m = /data-arg="([^"]+)"/.exec(r) || /class="ex-name"[^>]*>([^<]+)/.exec(r); const k = m ? m[1] : `r${i}`; had[k] = (had[k] || 0) + 1; return had[k] > 1 ? `${k}-${had[k]}` : k; };
+    return `<ul class="ex-list" data-flip>${rows.map((r, i) => r.replace('<li ', `<li data-key="x-${key(r, i)}" `)).join('')}</ul>`;
   }
   U.sessionRows = sessionRows;
   function phaseBadges(week, s) {
     const b = [];
-    if (week && week.phase.deload) b.push(U.badge('Deload week', 'accent'));
+    if (week && week.phase.deload) b.push(U.badge('Lighter week', 'accent'));
     else if (week && week.phase.onramp) b.push(U.badge('Easing in', 'accent'));
     if (s && s.short) b.push(U.badge('Short', 'neutral'));
     if (s && s.readiness && (s.readiness.minus || s.readiness.legsMinus)) b.push(U.badge('Lighter today', 'caution'));
@@ -67,10 +72,10 @@
     // Age and health (src/access.js): what the plan works around, and any reminders for today.
     const around = GH.access ? GH.access.plannedAround(S.profile) : null;
     const notes = (s.notes || []).filter((n) => n && n.text);
-    return `<div class="card session" data-key="main">
+    return `<div class="card session" data-key="main" data-flip>
         <div class="session-head"><span class="rf-card-eyebrow">${s.flare ? 'Flare day' : 'Workout'} · about ${U.roll(s.estimateMin)} min${where === 'gym' ? ' · gym' : ''}</span><span class="session-badges">${phaseBadges(plan.week, s)}</span></div>
         <h2 class="t-title-2">${U.esc(s.title)}</h2>
-        ${s.groups.length || (s.custom && s.custom.name) ? `<p class="t-footnote rf-muted session-groups">${s.custom && s.custom.name ? `${U.esc(s.custom.name)} · ` : ''}${s.groups.map((g) => U.esc(B().GROUP_NAME[g] || g)).join(' · ')}</p>` : ''}
+        ${s.groups.length || (s.custom && s.custom.name) ? `<p class="t-footnote rf-muted session-groups">${s.custom && s.custom.name ? `${U.esc(s.custom.name)}&nbsp;· ` : ''}${s.groups.map((g) => U.esc(B().GROUP_NAME[g] || g)).join('&nbsp;· ')}</p>` : ''}
         ${around ? `<button type="button" class="around-line t-footnote" data-act="planAround">${U.icon('heart', 'sm')}<span>${U.esc(around)}</span>${U.icon('chevron-right', 'sm')}</button>` : ''}
         ${notes.map((n) => `<p class="t-footnote session-note">${U.esc(n.text)}</p>`).join('')}
         ${where === 'both' ? `<div class="place-row">${U.seg('place', [['home', 'At home'], ['gym', 'At the gym']], s.place, 'Where you train today', ' data-on="setPlace"')}</div>` : ''}
@@ -165,14 +170,14 @@
     const lines = [];
     lines.push(sl ? `Slept ${U.fmtMin(sl.value)}${sl.day !== day ? ' the night before' : ''}` : 'No sleep logged yet');
     if (t.activeMin) lines.push(`${t.activeMin} active min`);
-    if (t.weightAvg7 != null) lines.push(`Weight ${U.fmtW(t.weightAvg7)} (7-day average)`);
+    if (t.weightAvg7 != null) lines.push(`Weight ${U.fmtW(t.weightAvg7)} (7-day average)`); // (its "7-day" kept whole below)
     return `<div class="card day-card" data-key="main">
       <span class="rf-card-eyebrow">Today</span>
       <div class="day-row">
         ${U.ring(steps != null ? steps / goal : 0, 'Steps today', `<span class="fd-ring-n rf-num">${steps != null ? U.roll(U.num(steps)) : '–'}</span><span class="t-caption rf-muted">steps</span>`, 'md', steps != null && steps >= goal ? 'positive' : 'accent')}
         <div class="day-lines">
           <p class="t-headline">Goal ${U.num(goal)} steps</p>
-          ${lines.map((l) => `<p class="t-footnote rf-muted">${U.esc(l)}</p>`).join('')}
+          ${lines.map((l) => `<p class="t-footnote rf-muted">${U.esc(l).replace(/[A-Za-z0-9]+(?:-[A-Za-z0-9]+)+/g, '<span class="gh-nw">$&</span>')}</p>`).join('')}
         </div>
       </div>
       ${sl ? '' : '<div class="btn-row"><button type="button" class="rf-btn" data-size="sm" data-act="logSleep">Log sleep</button></div>'}
@@ -234,7 +239,7 @@
               <span class="streak-n">${U.roll(st.current, 't-large-title')}<span class="t-callout rf-muted">day streak</span></span>
               <span class="streak-tally">${tallies(st.current)}</span>
             </span>
-            <span class="streak-foot"><span class="t-footnote rf-muted">${st.weekly ? `${U.plural(st.weekly, 'full week')} in a row · ` : ''}${st.freezeThisWeek ? 'Freeze used this week' : '1 freeze left this week'}${st.best > st.current ? ` · best ${st.best}` : ''}</span><span class="streak-go t-footnote">Progress${U.icon('chevron-right', 'sm')}</span></span>
+            <span class="streak-foot"><span class="t-footnote rf-muted">${st.weekly ? `${U.plural(st.weekly, 'full week')} in a row · ` : ''}${st.freezeThisWeek ? 'Freeze used this week' : '1&nbsp;freeze left this week'}${st.best > st.current ? ` · best ${st.best}` : ''}</span><span class="streak-go t-footnote">Progress${U.icon('chevron-right', 'sm')}</span></span>
           </button>` : ''}
           ${main}
           ${workouts && plan.type !== 'done' && !S.active && U.coachCard ? U.coachCard(S, day, session) : ''}

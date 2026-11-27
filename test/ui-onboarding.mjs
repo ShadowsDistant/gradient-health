@@ -172,6 +172,14 @@ section('The first run: six screens, one decision each');
   await page.clock.runFor(500); await page.waitForTimeout(600);
   check('its row says what\'s planned around', /Sore knees/.test(await page.locator('.onboard [data-act="obAround"]').innerText()) && /careful with shoulders/.test(await page.locator('.onboard [data-act="obAround"]').innerText()));
   check('no Health Connect request so far', await page.evaluate(() => window.__hcAsks) === 0);
+  // 1.15: how you eat, two quick optional choices, folded away.
+  check('How you eat is optional and folded away', /How you eat \(optional\)/.test(await text(page)) && !(await page.locator('.onboard details[data-more="eats"]').evaluate((d) => d.open)));
+  await page.evaluate(() => { document.querySelector('.onboard details[data-more="eats"]').open = true; });
+  await page.waitForTimeout(250);
+  const eats = await page.evaluate(() => [...document.querySelectorAll('.onboard details[data-more="eats"] .rf-segmented')].map((g) => `${g.getAttribute('aria-label')}: ${[...g.querySelectorAll('.rf-segment')].map((x) => x.textContent).join(', ')}`));
+  check('protein-rich food and fruit or vegetables: Rarely, Some meals, Most meals, none picked', eats.join(' | ') === 'How often you eat protein-rich food: Rarely, Some meals, Most meals | How often you eat fruit or vegetables: Rarely, Some meals, Most meals' && await page.locator('.onboard details[data-more="eats"] input:checked').count() === 0, eats);
+  await page.click('.onboard .rf-segmented[aria-label="How often you eat protein-rich food"] input[value="low"]', { force: true }); await settle(page, 250);
+  check('its summary says what was picked', /Protein rarely/.test(await page.locator('.onboard details[data-more="eats"] summary').innerText()), await page.locator('.onboard details[data-more="eats"] summary').innerText());
   await shot(page, '06-you');
 
   await page.locator('.ob-actions [data-variant="tinted"]').click();
@@ -229,8 +237,9 @@ section('The first run: six screens, one decision each');
   await page.waitForTimeout(700);
   const st = await page.evaluate(() => {
     const U = window.GH.ui, S = U.S, p = S.profile;
-    return { onboarded: p.onboarded, active: !!S.active, day: S.active && S.active.day, today: U.today(), title: S.active && S.active.session.title, goals: p.goals.join(), days: p.days, minutes: p.minutes, weekdays: p.weekdays, where: p.where, db: p.equipment.db.join(), pain: Object.keys(S.pain).join(), careful: p.careful.join(), age: p.age, exp: p.experience, recent: p.recentActivity, kg: Math.round(p.weightKg * 10) / 10, setupHidden: document.getElementById('onboard').hidden, tour: !!document.querySelector('dialog.tour-sheet[open]') };
+    return { onboarded: p.onboarded, active: !!S.active, day: S.active && S.active.day, today: U.today(), title: S.active && S.active.session.title, goals: p.goals.join(), days: p.days, minutes: p.minutes, weekdays: p.weekdays, where: p.where, db: p.equipment.db.join(), pain: Object.keys(S.pain).join(), careful: p.careful.join(), age: p.age, exp: p.experience, recent: p.recentActivity, kg: Math.round(p.weightKg * 10) / 10, eats: JSON.stringify(p.eats), setupHidden: document.getElementById('onboard').hidden, tour: !!document.querySelector('dialog.tour-sheet[open]') };
   });
+  check('how you eat saved, the one left unanswered as none', st.eats === '{"protein":"low","produce":null}', st.eats);
   check('Start my first workout opens the player on today\'s workout', st.active && st.day === st.today && st.title === firstTitle, st);
   check('with set-up done and gone', st.onboarded && st.setupHidden, st);
   check('the answers saved as the plan reads them', st.goals === 'legs,arms,fat,strength' && st.days === 3 && st.minutes === 30 && st.where === 'home' && st.db === '10,15,20' && st.pain === 'knee' && st.careful === 'shoulder' && st.age === 34 && st.exp === '1to3' && st.recent === 'some' && st.kg === 74.8, st);
@@ -358,6 +367,38 @@ section('Restore from a backup, on the welcome');
   const nf = await page.evaluate(() => ({ on: window.GH.ui.S.profile.prefs.notify.on, asked: window.__notify.asked }));
   check('someone set up before keeps their notifications as they were (off), and nothing is asked', nf.on === false && nf.asked === 0, nf);
   await shot(page, '09-restored');
+  await ctx.close();
+}
+
+section('A plan code on the welcome');
+{
+  const { ctx, page } = await fresh('app');
+  check('the welcome asks, quietly: Have a plan code?', (await page.locator('.ob-actions .ob-links [data-act="cpScan"]').innerText()).trim() === 'Have a plan code?' && await page.locator('.ob-actions .ob-links .rf-btn').count() === 3);
+  await page.click('.ob-actions [data-act="cpScan"]');
+  await page.waitForSelector('dialog[open] #cpCodeIn', { timeout: 6000 });
+  await settle(page, 700);
+  const code = await page.evaluate(() => window.GH.customPlan.toCode({ name: 'Upper and lower', days: [{ title: 'Upper', items: [{ move: 'push_std', sets: 3, reps: 10 }, { move: 'row_db', sets: 3, reps: 12 }, { move: 'curl_std', sets: 2, reps: 12 }] }, { title: 'Lower', items: [{ move: 'sq_goblet', sets: 3, reps: 12 }, { move: 'hg_rdl', sets: 3, reps: 10 }] }] }));
+  await page.locator('#cpCodeIn').fill(code.toLowerCase().replace(/-/g, ' '));
+  await page.locator('#cpCodeIn').press('Enter');
+  await settle(page, 300);
+  check('it opens the sheet for one over set-up, which reads the code', (await page.locator('dialog[open] .rf-sheet-title').innerText()) === 'Add a shared plan' && (await page.locator('#cpCodeSay').innerText()).trim() === 'Upper and lower · 2 days · 5 exercises' && await page.locator('#cpCodeIn').inputValue() === code);
+  await shot(page, '10a-code-sheet');
+  await page.click('dialog[open] [data-act="cpCodeSee"]');
+  await page.waitForSelector('.onboard .ob-shared', { timeout: 4000 });
+  await page.clock.runFor(600); await page.waitForTimeout(700);
+  const w = await page.evaluate(() => ({ card: document.querySelector('.onboard .ob-shared').innerText, primary: document.querySelector('.ob-actions [data-variant="tinted"]').textContent.trim(), own: !!document.querySelector('.ob-actions [data-act="obStart"]'), ask: !!document.querySelector('.ob-actions [data-act="cpScan"]'), sheets: document.querySelectorAll('dialog[open]').length }));
+  check('See the plan brings it to the welcome, as a link does', /Someone sent you a plan/.test(w.card) && /Upper and lower/.test(w.card) && /2 days a week · 5 exercises/.test(w.card) && w.primary === 'Start with this plan' && w.own && w.sheets === 0, w);
+  check('and with a plan waiting, the welcome stops asking for a code', !w.ask);
+  await shot(page, '10b-code-welcome');
+  await next(page); await next(page); await next(page);
+  await page.waitForTimeout(300);
+  const f = await page.evaluate(() => ({ title: document.querySelector('.onboard .rf-large-title').textContent, moves: document.querySelectorAll('.onboard .rv-first .rv-move').length, btn: document.querySelector('.ob-actions [data-variant="tinted"]').textContent.trim() }));
+  check('three screens on, the plan as they\'d do it', f.title === 'Upper and lower' && f.moves === 3 && f.btn === 'Start with this plan', f);
+  await page.click('.ob-actions [data-act="obLook"]');
+  await page.waitForSelector('#screen[data-view="today"]', { timeout: 5000 });
+  await page.clock.runFor(2500); await page.waitForTimeout(900);
+  const u = await page.evaluate(() => { const GH = window.GH, U = GH.ui, C = GH.customPlan, S = U.S; const id = C.activeId(S); return { plan: id && C.get(S, id).name, source: id && C.get(S, id).source, days: id && C.get(S, id).days.map((d) => d.items.length).join(), sheets: [...document.querySelectorAll('dialog[open] .rf-sheet-title')].map((e) => e.textContent) }; });
+  check('then it\'s saved and in use, and doesn\'t open again', u.plan === 'Upper and lower' && u.source === 'shared' && u.days === '3,2' && !u.sheets.length, u);
   await ctx.close();
 }
 

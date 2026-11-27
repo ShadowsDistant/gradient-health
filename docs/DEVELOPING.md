@@ -39,12 +39,20 @@ src/ui/activity.js       an activity's summary, the history and records, the map
                          activity leaving (U.actFoldAway); src/ui/actlive.js records one
 src/insights.js          on-device insights
 src/coach.js             the built-in coach: report, answers, today's decisions, suggestions, and the
-                         number check every AI answer goes through (keepToGiven, grounded)
+                         checks every AI answer goes through: its numbers (keepToGiven, grounded) and
+                         what a model may not say (keepSafe)
+src/person.js            who this is, for a model (GH.person, a lazy part): what the app knows about
+                         the person and what they do, in the same words for every model job
 src/planreview.js        the AI check of the plan (GH.planReview): what's sent, the schema and grammar,
                          and every suggestion tried on a copy before it's offered
 src/tailor.js            Tailor my plan: a request into a proposal, applied and undone (GH.tailor)
-src/customplan.js        your own plans: checks, running them, swaps, progression, the share code and
-                         Build me a plan (GH.customPlan)
+src/customplan.js        your own plans: checks, running them, swaps, progression and the share code
+                         (GH.customPlan)
+src/plancode.js          the plan code (GH.planCode): a plan as a short text code, written and read; in
+                         the plan builder's part, with src/data/plancode-moves.js, each move's number
+src/planbuild.js         Build me a plan, the ready-made plans and Improve, in the planUi part: the
+                         request, the engine's draft, the rules for this person, a model's take and
+                         its checks, and why a built plan is theirs (adds itself to GH.customPlan)
 src/qr.js                a QR code encoder that draws SVG (GH.qr), for sharing plans
 src/share-page.html      the page a shared plan's link opens in a browser (built to docs/p/index.html)
 src/devicecoach.js       the on-device model's prompt: rules, a compact data brief, safety routing
@@ -82,7 +90,8 @@ src/ui/customplan.js     Your plans: the list of plans, the plan builder's stand
                          and what both share (the tiles' pictures, U.cpKit)
 src/ui/planbuilder.js    the plan builder, a part of its own (planUi, loaded on a finger-down on a way in
                          or in a calm moment): a plan's page, the exercise picker, an exercise's sheet,
-                         New plan, sharing, a shared plan's preview, Build me a plan and Improve
+                         New plan, sharing (a plan code, a QR code, a link), adding a shared plan by
+                         its code, a shared plan's preview, Build me a plan and Improve
 src/ui/metric.js         a health number's sheet: its history, chart, and adding or changing it
 src/ui/bodymap.js        Progress's body map (front and back, 17 muscles) and the muscle sheet
 src/ui/guide.js          tour (cards over Today after the first workout), first-week checklist, tab
@@ -90,6 +99,8 @@ src/ui/guide.js          tour (cards over Today after the first workout), first-
 src/ui/firstrun.js       Before you start: health and privacy, once, before set-up or Today
 src/ui/motion.js         route changes, glides, collapse and expand, glass that forms and changes
                          shape (U.motion), menus (U.menu)
+src/ui/moments.js        motion for particular moments, a part that loads after launch: a picture that
+                         travels into its sheet, rings and bars that fill, the workout player's own
 src/ui/lazy.js           stand-ins for the parts that load when they're needed (APP_CHUNKS)
 src/ui/stills.js         the 3D figure's stills of the moves, kept on the phone (U.stills): Plan's
                          tiles, the plan builder's, set-up's reveal, Settings' preview
@@ -115,12 +126,14 @@ scripts/store-assets.mjs   the store images in docs/store/ from docs/screenshots
 scripts/store-3d.mjs     the 3D figure and medal renders the store images and the video use
 scripts/promo-video.mjs  the store's promo video (docs/store/promo-1080p.mp4) and its thumbnail
 scripts/release-notes.mjs  What's new for a version, for its GitHub release and the stores
+scripts/plan-code.mjs    a plan file's plan code and the plan a code holds, by the app's own code
 scripts/make-tiny-gguf.py  a tiny random-weight model for test/llm.mjs
 ```
 
 ```sh
 npm ci
-npm test          # simulations, insights, AI (mocked API), coach, poses, persistence, food, health, gym,
+npm test          # simulations, insights, AI (mocked API), what a model is told about the person and the
+                  # plans it builds (person), coach, poses, persistence, food, health, gym,
                   # your plans, activities, release notes, the plan engine and every combination of
                   # answers (combos; --full before a release), badges, haptics, security, the build
 npm run build     # dist/gradient-health.html, dist/lazy/, docs/PRIVACY.md and docs/p/index.html
@@ -192,6 +205,68 @@ left alone. A few conventions:
   and shrinks away, then the panel dissolves into Today, whose cards rise back with the workout not
   started; from Today, its buttons pinch away and its card folds and settles back
   (`U.todayCancelled`); the toast with Undo only comes after. Reduced motion: short fades.
+- Motion for particular moments is a part of its own, `src/ui/moments.js` (the `moments` chunk,
+  warmed first of the parts a moment after launch): launch pays nothing for it, nothing in it plays
+  at launch, and until it's in each of these moments happens as it did (the callers ask
+  `U.motion.scene && …`). It adds to `U.motion`, on the same curves (`U.motion.tok`), by transform and
+  opacity only; anything it starts ends within 400 ms except the finish (1.2 s), a new tap always
+  takes over, and with reduced motion none of it moves anything.
+  - **Rings and bars fill** (`fill`, `arrived`): Refract glides a ring or a bar whenever its value
+    changes, but one that's new on the page has nothing to glide from. As a route change or a sheet
+    brings one, it's held at what it last showed in that place (nothing, the first time; its
+    transition off meanwhile, so it doesn't glide there) and given its value 140 ms later, once the
+    page is in. One that shows what it showed last time is left alone, so a tab opened again doesn't
+    replay it, and a value changed elsewhere glides from the old one. The first eight of a page.
+  - **Charts draw in once** (`arrived`, and a sheet's opening): a chart's wipe (`.ch-svg`,
+    `src/styles.css`) plays the first time it's seen; a page or a sheet that brings it back shows it
+    drawn (its wipe turned off before the frame that would show it), so Progress doesn't draw its
+    charts again at every visit. A new range or a new day is another chart (the svg's key), which
+    draws in.
+  - **A picture travels** (`travel`): a copy of it (inert, `aria-hidden`, `.motion-copy`) moves from
+    where it is into another box, keeping its shape, and fades out over what's drawn there. A sheet
+    carries in a part of what was tapped (`CARRY` in `moments.js`): a move's picture (`.pw-thumb`,
+    `.cp-thumb`, `.pl-fig`: Plan's rows, the plan builder's, the player's figure and Up next) into its
+    figure box (`.sheet-fig`), and a health number's icon (`.hl-ico`, Health's tiles) into its
+    sheet's icon (`.ms-ico`), keeping the tile's colours. It moves over the same time and on the
+    same curve as the panel's slide, so it lands as the sheet does; what the sheet draws there shows
+    only at the very end, when the two are within a few pixels (the sheet's part is still rising
+    with the panel before that, and an earlier hand-off showed both, up to 100 px apart). The part
+    hears the sheet's first move (`gh-sheet-moving`, sent before the panel's slide starts, when the
+    panel is laid out where it will rest) and knows what was tapped from a click listener of its own,
+    so no screen names its sheet's source. A live 3D figure (a canvas) has no picture to copy: its
+    sheet just opens. (A health number's value was tried too: a copy of words at another size never
+    matched the sheet's closely enough to stand in for it.)
+  - **The workout player** (`enterPlayer`, `scene`, `timerIn`, `count`, `beat`; called from
+    `src/ui/player.js`): it opens with its main button growing out of the button that was tapped,
+    both being the same tinted glass. Between two scenes the figure travels between its card and Up
+    next's picture when the move is the same one (a set done; the next set coming forward) while the
+    rest of the scene fades in as one piece, the dot
+    of the set just done lands, a rest's ring fills from nothing (`data-gh-fill` keeps the player's
+    clock off it for those two frames) and what was logged settles in a beat later. A hold's ring
+    pops in where its seconds were, each of the 3-2-1 is a beat on the count with its cue, a rest
+    that ends with the question still up is one on the ring, and a minute passing or +15 s rolls the
+    count (`Refract.roll`). The finish lands a part at a time (the title and the streak, each card
+    110 ms after the last, then what's next), with one burst from the first card. `scene` is called
+    before the patch, where it reads where the figure is; what it returns plays after, and reads the
+    new box in the frame's read pass (`U.readSoon`), so a scene change still lays out once.
+- A list whose children are keyed and aren't a `.section` or an `.rf-list` glides when it opts in with
+  `data-flip` (Health's insights, Today's session rows, keyed by their move, which Short on time
+  takes out from where they are). Not while typing: Settings' search draws its results again at each
+  letter (patched with motion, a letter took 13 to 22 ms at 4x CPU where drawing again takes 4 to 5),
+  and only fades as the first results take the parts' place; Food's search patches as before and
+  glides only when what's found online arrives. A filter picked changes more of a list than FLIP
+  glides (eight changes in one container), so the new list would just be there: the plan builder's
+  picker (a muscle group, a kit, Only what I can do; not a letter typed) asks
+  `U.motion.refill(root, sel)` as it's picked, which waits for the list to change (a
+  MutationObserver: it hears the change before the frame that shows it, however late a segment's
+  re-render comes) and has the ten in sight settle in, nearly together, in by 250 ms. The badges'
+  filter doesn't: each tile settling in is a layer of its own, its medal drawn again as it comes and
+  as it lands, 200 to 600 ms of long tasks at 4x CPU in half the taps, so its tiles just change.
+- Every tappable part answers a press at once: Refract's buttons, rows and chips have theirs, the
+  app's cards, rows and text buttons theirs in their own style sheets, and `motion.css` has the
+  rest (the body map's muscles, a dropdown's summary). `ui-motion` forces `:active` on each tappable
+  part of the tabs and a health number's sheet and fails on one that looks the same; a segment (its
+  bead lifts under a finger), a chart's plot and a sheet's grabber answer in code instead.
 - Toasts (`U.toast` in `core.js`, Refract's toaster) come up from the bottom of the screen, above
   whatever is there: the tab bar, Today's floating buttons and the workout capsule, the player's,
   set-up's or a live activity's buttons, or an open sheet's main buttons (`--toast-lift`, read again
@@ -209,7 +284,7 @@ left alone. A few conventions:
   `U.toastWhenFree(fn)`, which waits until no sheet, dialog, menu or other toast is up, and not the
   player or set-up. `test/ui-toast.mjs` checks all of it.
 
-**Parts that load when they're needed.** Set-up (`src/ui/onboarding.js`), the plan review with
+**Parts that load when they're needed.** The moments' motion (`src/ui/moments.js`, above), set-up (`src/ui/onboarding.js`), the plan review with
 Why this plan (`src/planreview.js`, `src/ui/review.js`), How it works (`src/data/science.js`,
 `src/ui/science.js`), a badge's share card (`src/ui/sharecard.js`), notifications' planner
 (`src/notify.js`, loaded by `src/ui/notify.js` for someone who has them on) and the Food page with
@@ -449,7 +524,21 @@ chip, a segment, a stepper's button) reaches past its box with an empty `::befor
 Titles balance their lines and paragraphs avoid a lone last word (`text-wrap` in `src/styles.css`), and
 `U.nb` keeps a number on the line of its unit ("25 lb", "20% → 7%"). `test/ui-controls.mjs` checks the
 reach; `test/sweep.mjs` and `test/ui-sheetsize.mjs` measure a label's text with a Range, so the hit
-areas don't read as overflow.
+areas don't read as overflow. A plain `<button>` takes the font around it through a rule that weighs
+nothing (`:where(button:not([class*="rf-"]))` in `src/styles.css`), so its class's own size and weight
+apply: as `button:not(…)` it outweighed any single class, and a move's name on Today, a Why chip and
+the chat's engine pill all drew in the page's 16 px regular (`ui-regress` checks a few).
+
+A few shared pieces of a page (`src/styles.css`): a note straight in a `.section`
+(`<p class="t-footnote">` under a card or a list) sits as a list's footer does, on the content's
+inset and close to what it explains; an empty list has a small picture or icon tile, a
+headline for what's missing, a line for what will show there and the one way to start
+(`.card.gh-empty`, Activities'; a number's sheet, Chats and Your plans have the same shape in
+classes of their own); and a list row that can't be taken back
+(`is-danger`: Reset everything, Delete this run) is in the critical colour, as one that acts at once (`set-do`) is in
+the accent. A field (`.rf-field`) and set-up's groups (`.ob-group`) take the width they're given, in
+a `minmax(0, 1fr)` column: an input is 20 characters wide on its own, and with large text that
+pushed a plan's Name and the equipment's weights past the edge.
 
 The controls (`src/ui/controls.js`): Refract 1.4's own switch and segmented control take any
 movement past 3 px as a drag, so a tap that wobbles would be lost. The app replaces those two
@@ -496,7 +585,11 @@ Where the app uses Refract 1.4's newer parts:
   0.5 gives 82%). At the bottom of the screen a blur has nothing below to draw on and fades out,
   letting the page's words through sharp, so a sheet's glass turns solid over its last 40 px, fading
   in over the 80 above (`ui-sheet` reads the pixels). A sheet's body has no inset of its own, so each
-  block in it brings its 16 px.
+  block in it brings its 16 px. The header's action (`action: { label, act }`) is the sheet's one
+  tinted button; `action.quiet` makes it plain glass where it only leads somewhere else (the chat's
+  Chats, beside Send). A text button with words in a sheet (`data-variant="plain"`, or none) is the
+  accent, as on a page (Refract's on-glass rule gave it the label's ink, and "Show all 28" read as a
+  bold label); an icon alone keeps the label's ink and a tone its own colour.
   Content scrolled off its top fades into the material over 48 px under the header, on the curve a
   page fades on under the top bar (`data-scrolled`, toggled only as the scroll position crosses 0):
   on solid glass a gradient in the material's own colour (`--sheet-bg` and what's left of the sheen
@@ -909,10 +1002,49 @@ back at a fraction of the price), and so is the plan builder's; the requests tha
 cache-write premium. `node test/ai.mjs` checks the shapes, and a short script in the PR measured the
 sizes before and after.
 
+**Who this is** (`src/person.js`, `GH.person`, the `person` part). Every model job is told who the
+person is by one function, so a plan a model builds, a check and an answer are about this person:
+`facts(S, day, o)` gives a list of `{ id, label, value }` in plain words (`lines` for a model, `shown`
+for the build sheet's list, so the two can't drift apart). Beyond goals, history, schedule and
+equipment it holds what their weights mean for them (`loadFeel`: the plan engine's judgement,
+`brain.weightFit`, of each ladder's plain loaded move: light, right with long sets, right or
+heavy), how they eat (`brain.eatsOf`: their answer, or what their food log shows, which goes only
+to the on-device model, since Claude is told how they said they eat) and how
+often they reach a protein goal (where the summary's food part doesn't already say), their
+build when it's lean (BMI under 21: the one build the research says changes a plan), weeks with the
+app, the days they train, workouts a week against the plan and how long they take, how workouts
+felt and the reps-left answers against each exercise's aim (where the summary's training part
+doesn't already say), what's moving up or stuck (each log item's `outcome`), and what they've picked, hidden, pinned, asked Tailor for, taken
+or turned down. Only facts with data behind them. `advice` adds what the research says to do about
+light weights, little protein, workouts missed or running long and a beginner, and `guard` the line
+that rules out weight loss for someone under 18 or lean. `o.to` says who reads it: the on-device
+model gets everything; Claude never gets the exact age, the height, health conditions, floor work or
+a gentle start. It's the summary's PERSON part, so chat, the report, suggestions, checks, plans and
+Tailor all get it. The part loads before a request is written or the summary is shown (`GH.ai.who`),
+and warms after launch.
+
+**The OK has a version** (`GH.ai.CONSENT`, `S.ai.consentV`; none means 1). The facts 1.15 added go to
+Claude only with version 2 (`GH.ai.wide`): someone who allowed the older list keeps sending exactly
+what it named, and Settings (Let Claude know more about you) and the build sheet offer the newer
+one (`U.claudeConsent(true)`); saying no there changes nothing. Something new in the summary means a
+new version, a line in the consent sheet (`src/ui/settings.js`) and the privacy policy
+(`src/data/privacy.js`), and `wide`-gating it in `person.js`. `test/person.mjs` checks both lists
+and that no request holds what never goes.
+
+**What a model may not say.** After the number check, `GH.coach.keepSafe` leaves out any sentence
+with a diet, a calorie deficit or surplus, a weight or body-fat target, a diagnosis, medicine or
+supplements, a food rule past a small, optional idea (cutting out a kind of food, when to eat,
+set meals), and, for someone under 18 or lean (`GH.person.strict`), anything about losing weight
+or eating less. Chat answers (Claude's and the on-device model's, through `grounded`, with a note),
+the plan review's words and a built plan's reasons all go through it. The system text says the same,
+and a red-flag question still never reaches a model.
+
 **Plans.** Build me a plan and Check my plan go through Claude with the person's model and limits
 (`GH.ai.json(..., { feature })`), and Improve (`GH.customPlan.improve`) reworks a plan of the person's
 own the same way: their plan is the draft, held to the same checks as a plan built from scratch
-(`accept`), with the changes listed in words (`diff`) before they choose to use them or save a new plan.
+(`accept`, where what they had and the model left alone stays as they had it), with the changes
+listed in words (`diff`) before they choose to use them or save a new plan. A plan request is about
+9,000 to 12,000 characters with its summary and schema, a check about 13,000 (`TYPICAL_CHARS`).
 
 ## On-device AI
 
@@ -958,13 +1090,17 @@ Both are the same llama.cpp release (b10663). Details:
   goes in with FACTS: what the built-in coach (`src/coach.js`) works out for its topic, the How it works
   rule behind it (`src/data/science.js`) and, for today, what the plan changed and why. The chat shows
   them under each answer ("What it used"). Emergencies get the built-in safety answer instead.
+- **Who this is.** The brief also holds the short form of `GH.person`'s facts (what their weights
+  mean for them, how they eat, what they do and choose), and the plan review and Build me a plan
+  give the on-device model the same facts as Claude, plus the ones that never leave the phone.
 - **Checked answers.** Small models still slip, so `GH.deviceCoach` holds them to the app's reading. A
   yes-or-no question the numbers settle (`GH.coach.verdict`: "Am I getting stronger?") and a question
   built on something that isn't so (`GH.coach.correction`: "Why is today lighter?" on a full day) start
   from the app's own words, passed to `GH.llm.chat` as `lead` (written into the prompt, so the model
   carries on from it). Afterwards `keepToGiven` leaves out any sentence with a number that wasn't in the
   prompt (a rounded one counts), and `finish` puts the app's own answer in its place if too little is
-  left, with a note under the answer saying so.
+  left, with a note under the answer saying so. `keepSafe` then leaves out diet, medicine and, for
+  someone under 18 or lean, weight loss (see Claude, What a model may not say).
 - **Nothing hangs silently.** Range reads time out after 30 s (three tries); a load with no progress
   for 45 s and an answer with nothing new for 60 s are "stalled"; a wllama worker that dies (wllama only
   logs that) or won't stop within 5 s of Stop is shut down, and everything waiting on it is rejected.
@@ -1123,12 +1259,46 @@ to build toward heavier sets for bones. `test/simulate.mjs` checks each rule ove
 (`--full`: 3-wise, with 12-week runs, before a release) and checks that every session fits its time,
 every group gets its week, only allowed moves appear and the same answers give the same plan.
 
+**1.15's personal plans** (the rules and their sources are in `reports/Personalizing home workout
+plans.md`, Practical section A; the code cites each one). They change which days train what and what
+a session holds, so they start from `S.personalFrom`: the week after 1.15 first loads a state (a
+migration in `src/optimizer.js`), a new state's first week. `brain.personal(S, day)` tells the weeks
+apart; earlier ones are planned on a copy of the profile marked `legacyPlan`, as `legacyRules` does
+for 1.13's, and 1.15's moves and ladders (`since: 15` in `src/data/moves.js`) stay out of them.
+`test/optimizer.mjs` keeps a copy of what 1.14 planned for six people and checks those weeks replay.
+In 1.15's weeks: a session holds the exercises its minutes do (`optimizer.exCap`: 5 at 20 and 25
+minutes, 6 at 30, 8 from 45; balance practice counts one), an exercise has 2 to 4 sets (`brain.setMax`),
+and `brain.slots15` gives a group's sets for the day to one exercise up to 3 or 4, two from 5 and
+three from 9, from the group's angles (`ANGLES`: a curl and a hammer curl, an overhead extension and
+close-grip push-ups, a crunch and a reverse crunch). A top goal (tier 1) trains on two days or more
+with its sets shared out (the split's `goal2`, and a last pass in `allocate`), its weekly minimum met
+by its own sets, not other groups' half-credit; a goal's two angles take turns over the days that
+train it (`gocc`), the others turn every four weeks. Abs get 3 sets a session at most and not on
+back-to-back days. `brain.weightFit(S, move)` judges the person's heaviest weight light, right or
+heavy for a move from body weight, sex, level and an estimated one-rep max (`ONE_RM`); a light one
+gives way to the rung that's hard (`weak`, `bestRung`: a split squat, a doorframe row, one arm at a
+time with `oneArm`), sets of more than 15 reps or on a light weight aim for 0-2 reps left (`AIMS['02']`),
+reps stop at 20 and move on after two sessions at the top, and the hint to buy a heavier weight comes
+once. With a weaker arm (`profile.lead.arm`) the dumbbell arm work is one arm at a time, that side
+first, resting 30 s, with one extra set on up to two days. A beginner (level 0) has no planned lighter
+week in their first 12 training weeks. `profile.eats` (`{ protein, produce }`, each `'low'`, `'some'`,
+`'most'` or null) is asked in set-up's About you and in Your answers; `brain.eatsOf` reads it (the food
+log stands in for protein, `profile.eats.logged`; nothing under 18), and little protein keeps a normal
+week's sets, holds growth at 2 past the start and spaces a muscle's days (`programFor().lowProtein`).
+`GH.optimizer.personalFacts(S, day)` says which of the person's answers the week's plan used, each
+line read from the week's sessions (`[{ id, fields, text }]`, id 'goals', 'time', 'kit', 'side',
+'eating' or 'abs'); Why this plan leads with them, and the AI's plans can quote them. The coach
+(`src/coach.js`) offers a day fewer or shorter sessions after two weeks of missed workouts, and the
+eating steps once each.
+
 **Reps left and rests.** Each set has an aim for the reps left in the tank (`effortFor` in
 `src/brain.js`, one rule for the hint, the progression and the coach): 2-3 on the 4-8 rep strength
 lifts (4 is fine too; not when a condition sets the lift's reps, `GH.access.repRange`), 1-2 for the
 top goal muscles (tier 1) and, with osteoporosis (`GH.access.boneLoad`), main sets after the on-ramp;
 2-3 in the on-ramp weeks, from 60 and with high blood pressure, a heart condition or diabetic eye
-disease; 3 or more on fast reps (`it.power`: 1-2 means they slowed, so it holds); 1-3 otherwise.
+disease; 3 or more on fast reps (`it.power`: 1-2 means they slowed, so it holds); in 1.15's weeks,
+2 at most (0 is fine) on sets of more than 15 reps or on a weight that's light for the person; 1-3
+otherwise.
 `startWorkout` puts it on each item (`it.effort`, which the line under a set names through
 `GH.access.setHint`) and in each log (`log.aim`). The player asks 0, 1-2, 3 or 4+ (`'0'`, `'12'`, `'3'`, `'4'`), and `effortStep` reads the
 answer against the aim: 0 holds, on the aim is the usual step, each rep past what it allows a bigger
@@ -1140,18 +1310,30 @@ answers the same way; `RIR_NUM` counts 4+ as 4.5 in the one-rep max estimate. Re
 item (`it.agePlus`). The fit takes that off first when a session runs over its time, and gives no
 longer rests to a session that had to lose sets; once the sets are in, it puts it back wherever the
 session still fits its time, then the strength lifts' longer rests, then 90 s for what's done on its
-own at 60 (right after the sets with a muscle goal, after the finisher and cool-down otherwise). Supersets stay at 60. `explain` says so
+own at 60 (right after the sets with a muscle goal, after the finisher and cool-down otherwise). Supersets stay at 60, and in
+1.15's weeks an arm exercise done one arm at a time keeps 30 s (each arm rests through the other's set). `explain` says so
 when the plan's strength work comes to under 30 minutes a week (days times minutes), with the fix.
 
 `src/planreview.js` (`GH.planReview`) is the AI check. It sends next week's plan as built (each day's
 groups and moves, weekly sets against targets, minutes against the time set, the score and the
 planner's reasons, and up to 60 moves to swap in) to Claude, held to a JSON schema, or to the
-on-device model, held to a GBNF grammar from the same spec. Health conditions and the exact age only
+on-device model, held to a GBNF grammar from the same spec. Both get who this is in the same words
+(`GH.person`: Claude in its summary, the on-device model in the prompt, in a shorter form for a model
+with a short memory) and what the research says to do about it (`adviceLines`: light weights, little
+protein, workouts missed or running long, a beginner). Health conditions and the exact age only
 ever go to the on-device model. Each suggestion becomes a plan tweak and is tried with
 `GH.optimizer.applyTweaks` on a copy: a broken rule, or a score more than 0.03 lower, turns it down
-with the reason in plain words, and its text goes through the number check. The person picks which
-to apply (`S.profile.planTweaks`), with Undo. Claude's weekly report asks for plan ideas in the same
-request. `test/ai.mjs` and `test/ui-review.mjs` cover it.
+with the reason in plain words, and its text goes through the number check and `keepSafe`. A kind of
+suggestion is only added where `applyTweaks` can try it: `days` (workouts a week, for someone who
+does two of the three they plan) is tried as Settings would set it. The person picks which to apply
+(`S.profile.planTweaks`), with Undo; the ones they leave unticked are kept on the review's event
+(`declined`), and the next plan a model builds or checks is told. The result says what it looked at
+besides the plan (`looked`: the facts that model was given, and for Claude how workouts felt, the
+reps left and sleep only when its summary had them). The planner's reasons hold the engine's own
+lines from the person's answers (`GH.optimizer.personalFacts`); Claude gets each only as
+`GH.person.engineFactOk` allows, by the profile fields it read: weight or eating with the newer
+OK, height only when the line says no more than that they're lean. Claude's weekly report asks for plan ideas in the same request.
+`test/ai.mjs`, `test/person.mjs` and `test/ui-review.mjs` cover it.
 
 Set-up (`src/ui/onboarding.js`) is six screens with one decision each, ending on the plan the engine
 built (`GH.optimizer.explainProfile`) with its first workout a tap away. With no weekdays picked, the
@@ -1174,13 +1356,19 @@ or `acceptDisclaimer` for a page without the bridge); a test that wants it sets
 
 People can build their own plans, ask the coach to build one, or add one someone shared, and run it
 with the app's own player, progression and readiness. `src/customplan.js` is pure logic on the saved
-state (`test/customplan.mjs`); `src/ui/customplan.js` is the screens (`test/ui-customplan.mjs`).
+state (`test/customplan.mjs`), with Build me a plan, the ready-made plans and Improve in
+`src/planbuild.js` (the planUi part, since only the plans' screens ask for them; a Node script or
+test loads it after `src/customplan.js`, and `test/person.mjs` covers it); `src/ui/customplan.js` is
+the screens (`test/ui-customplan.mjs`).
 
 - **A plan** is `{ v, id, name, note, days: [{ title, items: [{ move, sets, reps | secs, rest? }] }],
   weekdays, source: 'you' | 'coach' | 'shared', from?, createdAt, updatedAt }`, kept in `S.customPlans`;
   `S.activePlan` is the one in use (null: the coach's plan). `normalize()` brings anything plan-like (an
   older save, a shared code, a model's answer) to what this version runs: known move ids, 1 to 6 days,
-  1 to 12 exercises a day, 1 to 10 sets, 1 to 100 reps or 5 to 600 seconds.
+  1 to 12 exercises a day, 1 to 10 sets, 1 to 100 reps or 5 to 600 seconds. A plan the coach built
+  also carries why it's this person's: `why` (up to 3 lines of 160 characters) and a line on each day
+  (`day.why`, 100). `update()` takes them off when the plan's exercises change (they'd no longer be
+  true); a new name, a note or moving a day keeps them. The share code doesn't carry them.
 - **Running one.** Switching is an event (`{ type: 'plan', day, id, n, wd }` in `S.events`), so the
   calendar replays each week with the plan that was in force and past days keep their meaning. Four
   hooks in `src/brain.js`, marked `[custom plans]`: `calendar()` takes a week's sessions from
@@ -1198,15 +1386,67 @@ state (`test/customplan.mjs`); `src/ui/customplan.js` is the screens (`test/ui-c
   `gradienthealth://plan?d=<data>`, `intent://plan?d=<data>#Intent;…` and the bare data. A typical
   3-day plan's link is about 350 characters, a version 12 QR code. `src/qr.js` draws the code as SVG;
   `test/customplan.mjs` reads it back with ZXing. Scanning is the barcode sheet with `{ qr: true }`.
+  The QR code and the link stay in this format, so an older app still reads them, and links made
+  by 1.14 open for good (`test/customplan.mjs` keeps two as they were written).
+- **The plan code.** `src/plancode.js` (`GH.planCode`, and `toCode`, `fromCode` and `dayPlan` on
+  `GH.customPlan`) writes a plan as a short text code to copy into a message, read out or type:
+  `GH19-3KX4-HZBX-…`, "GH" and then Crockford base32 (no I, L, O or U) in groups of four. It's a
+  format of its own, bit-packed, and much shorter than a link: 60 characters for a 3-day plan of 15
+  exercises under the app's own names, 28 for one workout of six, and 104 for the typical 18-exercise
+  plan with its names, where its link has 351. There is no server: the code is the plan.
+  - *The frame* is the same for every format to come: `GH`, one symbol for the format (1), the plan's
+    bits, zero bits up to a whole group, then a 20-bit CRC over all of that (x^20 + x^19 + x^6 + x^5 +
+    x^3 + 1, started from all ones and flipped at the end). So an older app can tell a newer format
+    ("It was shared from a newer version of the app.") from a typo ("That code has a typo. Check it
+    and try again."). The check catches every single wrong character and every two neighbours
+    swapped; whole groups catch one dropped or doubled.
+  - *Format 1's bits* are laid out in the file's header: the days, set weekdays, and each exercise's
+    move, sets, reps or seconds, and its rest when one is set, the usual values in fewer bits. A
+    plan's name and a day's title are in the code only when they differ from what the app would call
+    them ("My plan", a single workout by its day, a day by its muscles), in 5-bit letters, or UTF-8
+    for anything else. The note and the sharer's name are never in it. A change to any of format 1's
+    tables or fields is format 2.
+  - *A move is a number*, its place in `GH.PLAN_CODE_MOVES` (`src/data/plancode-moves.js`), and **that
+    list only grows**: a new move's id goes at the end; nothing in it is reordered, renamed or taken
+    out, and a number is never used again (a move dropped from the library keeps its place). A code
+    with a number this version doesn't have reads as a plan without that exercise, and says so.
+    `test/customplan.mjs` holds a hash of the first 296 (the moves before 1.15 added its own), and fails when a move in
+    the library has no number: add it to the end of the list.
+  - *Reading one* is forgiving: case, spaces, hyphens and line breaks don't matter, O reads as 0 and
+    I and L as 1, and a code is found among other words, with or without its GH. What it yields
+    goes through `normalize()`, and no more than 8,192 characters and 2,048 symbols are looked at
+    (`test/security.mjs`: very long, all one symbol, random, the right check over nonsense).
+  - *It loads with the plan builder* (`planUi`), not at launch. `decode()` loads that part before it
+    reads one, so `decode()` and `dataFrom()` take a link or a code from every way in: the scanner, a
+    link (`gradienthealth://plan?c=<code>` too), the field.
+  - `node scripts/plan-code.mjs plan.json` prints a plan file's code, made by the app's own code:
+    what `normalize()` changed or left out, the code's length and the plan read back from it.
+    `--decode "<code>"` prints the plan a code holds, `--moves [words]` the ids a plan can name, and
+    `--json` the plan as a plan file. The file is `{ "name", "weekdays"?, "days": [{ "title", "items":
+    [{ "move", "sets", "reps" | "secs", "rest"? }] }] }`.
+- **Sharing one, and adding one.** The share sheet (`shareSheet` in `planbuilder.js`) has the QR code,
+  the link and the plan code with Copy code; a day's menu has Share this workout, the same sheet for a
+  plan of just that day (`dayPlan`, not saved). Add a shared plan opens a sheet with a field for the
+  code: it groups itself as it's typed, says what the code holds the moment it's whole, and says
+  what's wrong under the field, not in a toast (a code still being typed isn't called a typo until
+  it's pasted, Done is pressed or the field is left). A link works in it too, Paste shows where the
+  clipboard may be read, and Scan a QR code is the other way in. The preview names the equipment a
+  plan uses that isn't in the person's, with "I have this": the equipment editor
+  (`U.editAnswers('equipment')`), then the preview again, checked against what they have now. A
+  one-day plan can be saved, or go into one of their plans with room as its last day (Add it to a
+  plan).
 - **Links into the app.** The shell calls `window.__gh.onLink(url)` when a link opens the running app
   (it returns true when it took the link; other handlers stay chained), and `AndroidBridge.pendingLink()`
   returns the link the app was started with. A link that arrives during set-up is offered on its
-  welcome (`U.peekSharedPlan`): three screens into that plan instead of six.
+  welcome (`U.peekSharedPlan`): three screens into that plan instead of six. The welcome's "Have a
+  plan code?" opens Add a shared plan's sheet, and the plan it reads goes the same way.
 - **The share page.** `src/share-page.html` is built to `docs/p/index.html` with the QR encoder and the
   move names inlined, so it makes no requests (its CSP allows only its own script, by hash). It reads the
   plan from the part after `#`, which browsers never send, and shows it. On Android it offers "Open in
   Gradient Health" (an `intent://plan?d=…` link with the releases page as the fallback); elsewhere it
-  shows the code to scan. **GitHub Pages must be on** for links to open in a browser (the repository's
+  shows the code to scan. Either way it shows the plan's code to type into the app: the page has a
+  small writer of format 1 of its own (`planCode`, between the `CODE` marks, with each move's number
+  from the build), which `test/customplan.mjs` runs against the app's for a few hundred plans. **GitHub Pages must be on** for links to open in a browser (the repository's
   Settings, Pages, Deploy from a branch, `main`, `/docs`). QR codes, and links opened straight in the
   app, work without it.
 - **The builder** (`src/ui/planbuilder.js`, its logic in `src/customplan.js`). The picker is a windowed
@@ -1220,15 +1460,64 @@ state (`test/customplan.mjs`); `src/ui/customplan.js` is the screens (`test/ui-c
   page shows its week by muscle (`weekSets()`: sets a week against `S.vol`), and New plan offers Full
   body, Upper and lower, Push, pull, legs and No equipment (`templates()`), fitted to the person's
   minutes. `test/customplan.mjs` and `test/ui-customplan.mjs` cover them.
-- **Build me a plan.** `generate()` reads the request with Tailor's rules plus the split and the time,
-  has the brain plan a week for a copy of the person with those wishes, and turns it into a plan, so it
-  only holds moves they can do. With Claude on (`GH.ai.json`, a JSON schema) or an on-device model (a
-  GBNF grammar of the allowed move ids and exactly the days asked for), a model then renames, regroups
-  and re-picks from `allowedMoves()`. `accept()` keeps its answer only if it's a valid plan of moves this
-  person can do that passes the plan review's checks: each day fits the time asked for (sets come off
-  the move with the most to spare until it does), every muscle group keeps at least half its weekly
-  sets, the focus groups keep two thirds, and pulling still balances pushing. Otherwise the app's own
-  plan stands.
+- **Build me a plan** (`src/planbuild.js`). `wishes()` reads the request with Tailor's rules plus the
+  split and the time, and the sheet's three quick choices (`choices()`: what you want most, how it
+  should feel, what to leave out, each already set from what the app knows). `generate()` has the
+  brain plan a week for a copy of the person with those wishes and turns it into a plan, so it only
+  holds moves they can do; `build()` brings that draft inside the rules below and puts the app's own
+  reasons on it. With Claude on (`GH.ai.json`, a JSON schema) or an on-device model (a GBNF grammar),
+  a model then renames, regroups and re-picks from `allowedMoves()` (the person's level on each
+  ladder and the rungs either side; the stand-in and practice ladders only when the draft uses them).
+- **The rules for this person** (`rules()`; the prompts state them, `accept()` checks them). From the
+  research in `research_notes/Personalizing home workout plans/`: the exercises a day their minutes
+  hold (2 to 3 in up to 12 minutes, 3 to 5 in 20, 4 to 6 in 30, 5 to 8 in 45, 6 to 9 beyond: the
+  app's own table); 1 to 4 sets of one exercise in a day (3 when they asked for easy to keep up,
+  and from 60, which also stops sets 2 to 3 reps short), and past that a second exercise for a goal
+  muscle, up to 10 sets of one muscle in a session (legs, several muscles here, aside); each move's
+  own rep range (`brain.rangeFor`), up to 30 where their weights are light for them; at most 60
+  crunch-type reps in a session (`BUILD.flexion`: the crunch ladder, reverse crunches, leg raises,
+  V-ups); each goal muscle's weekly sets between the engine's floor and cap (`brain.programFor`),
+  at most 18 for abs and 20 for arms, where more adds little, and 12 when they eat little protein,
+  since more sets don't make up for food, on at least 2 days; every other muscle the draft trains 4
+  to 30 sets a week; goal muscles first, abs and core last. The numbers that come from the engine
+  follow it when it changes, and so do the words for effort (`GH.person.effort`, from
+  `brain.effortFor`).
+- **The checks.** `accept()` keeps a model's answer only if it's a valid plan of moves this person
+  can do. `tidy()` puts right what it safely can: sets past the most go to a second exercise for a
+  goal muscle or just go, reps come back inside each move's range, a muscle's second exercise is
+  folded into its first when the day has more exercises than the time holds (and wouldn't run
+  longer for it), a muscle's sets in a day and the crunch-type reps come down to their limits,
+  goal muscles go first. A take that cuts what they asked to focus on below two thirds of the
+  draft's sets is turned down there and then, before any repair. Then a goal muscle on too few days
+  gets the draft's exercise back; every muscle gives up what's past its weekly ceiling; each day is
+  fitted to the time asked for (sets come off the move with the most to spare, a muscle's at its
+  weekly floor last, and the lighter side of pushing and pulling last while the plan is no better
+  balanced than the draft); a muscle below its floor gets sets back where a day has the time and
+  the room, or, for one the model's answer trains, the draft's exercise back on a day it was left
+  off; and the plan review's checks still hold: every muscle group keeps at least half its weekly
+  sets, the focus groups two thirds, and pulling still balances pushing. In Improve, sets come off
+  what the model changed before what the person had. Each limit is read against the draft too (a model isn't asked for
+  more than the engine's own draft manages, and the draft is brought inside a day's limits before
+  it's shown), and anything else keeps the draft. `refine()` returns what was put right as
+  `fixes`, in plain words, and the sheet lists them.
+- **Why it's yours.** A built plan says why it's this person's: `plan.why` and `day.why`. Claude
+  writes them (the schema asks for the reasons first, each `{ fact, line }` naming a fact it was
+  given by `GH.person`'s id); the on-device model picks from the app's own (`ownWhy()`, by `b1`,
+  `b2`…, so a small model writes no free text but the names); with no model the app's own stand.
+  Every line goes through `say()`: one line in the app's voice (plain characters, no dash as
+  punctuation, a capital and a full stop), within its length, every number one the model was sent or
+  the plan's own, nothing `keepSafe` leaves out, no promise, and no fact the model wasn't given
+  (`NAMES`: words for eating, sleep, build, joints, what they've done and so on, each allowed only
+  when that fact went). A line that fails is dropped and the app's own stands in. The sheet shows
+  them (Why it's yours), the plan keeps them and its page shows them (Why this plan).
+- **Sizes.** Claude's request is at most about 9,000 characters before its summary (moves leave the
+  end of the list until it fits), under 12,000 with it. The on-device model gets 60 moves at most
+  and about 6,500 characters, which with its answer (24 tokens for each exercise a day may hold)
+  fits the 4,096-token models. A model with less memory (the older 2,048-token ones) gets the short
+  form (`deviceAsk`, `compactMoves`): the draft's moves and their neighbours on each ladder, 24 at
+  most, and fewer facts, about 4,400 characters; one that can't hold even that isn't asked. Both
+  are counted at 3 characters a token, as `llm.js` does. `test/person.mjs` checks the sizes, and
+  `test/llm.mjs` runs both forms and the plan check through llama.cpp under their grammars.
 
 ## Notifications
 

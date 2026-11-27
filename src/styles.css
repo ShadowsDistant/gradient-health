@@ -77,8 +77,10 @@ html, body { touch-action: pan-x pan-y; }
   :where(button, a[href][class*="rf-"], [role="button"], [role="tab"], [role="menuitem"], [role="option"], label.rf-segment) { position: relative; }
 }
 /* Plain buttons take the surrounding font. Refract's controls (.rf-*) keep their own sizes, so this
-   must not reach them: an unlayered `font` here would beat Refract's layered rules. */
-button:not([class*="rf-"]) { font: inherit; }
+   must not reach them: an unlayered `font` here would beat Refract's layered rules. In :where(), so
+   it weighs nothing: as `button:not(…)` it outweighed any one class, and a button's own size and
+   weight (.ex-name, .why-chip, .pl-load, .chat-pill, .chat-card, .msg-tool) never applied. */
+:where(button:not([class*="rf-"])) { font: inherit; }
 /* clip, not hidden: a hidden box can still be scrolled by script, and the glow below is wider than
    the screen, so scrollIntoView could shift the whole app sideways. */
 .app { position: fixed; inset: 0; overflow: hidden; overflow: clip; background: var(--bg); }
@@ -243,7 +245,9 @@ button.stat:active, .insight-line:active, .pl-fig-card:active, .tap-card:active 
 .ex-name:active, .ex:has(> button.ex-name:active) > :is(.ex-tag, .ex-meta) { opacity: .55; transition-duration: 0ms; }
 .ex:has(> button.ex-name) { position: relative; }
 .ex > button.ex-name { position: static; } /* (so its ::before is laid out on the row, not on it) */
-button.ex-name::before { content: ''; position: absolute; inset: 0; }
+/* (2 px past the row's top: a finger 44 px across, centred on the name, reaches that far now the
+   name's line is its own 1.3 tall, not the page's 1.5.) */
+button.ex-name::before { content: ''; position: absolute; inset: -2px 0 0; }
 
 /* Sheets (and the page receding behind them) are styled in styles/sheet.css. Toasts come up from
    the bottom (U.toast, src/ui/core.js), above the tab bar, the floating buttons, the player's or
@@ -271,6 +275,10 @@ button.ex-name::before { content: ''; position: absolute; inset: 0; }
 .section > .rf-list-header { padding-block-end: 0; margin-block: var(--space-4) calc(var(--space-2) - var(--space-3)); }
 .section > .rf-list-header:first-child { margin-block-start: 0; }
 .section > .rf-list-footer { padding-block-start: 0; margin-block-start: calc(var(--space-2) - var(--space-3)); }
+/* A note straight in a section (under a card or a list) sits as a list's footer does: on the
+   content's inset and close to what it explains. (As a bare paragraph it sat on the page's edge, a
+   line's height below.) */
+.section > p.t-footnote { margin: calc(var(--space-2) - var(--space-3)) 0 0; padding-inline: var(--space-4); }
 /* Long titles and descriptions wrap instead of being cut off. */
 .rf-list-title, .rf-list-sub { white-space: normal; overflow-wrap: anywhere; }
 /* And they wrap kindly: a title's lines balanced ("Record a walk, / run or ride", not a word on its
@@ -278,11 +286,22 @@ button.ex-name::before { content: ''; position: absolute; inset: 0; }
 :is(h1, h2, h3, .rf-large-title, .t-title-1, .t-title-2, .t-title-3, .t-headline, .rf-list-title) { text-wrap: balance; }
 :is(p, .t-body, .t-callout, .t-subhead, .t-footnote, .t-caption, .rf-list-sub) { text-wrap: pretty; }
 .rf-list-sub { display: block; }
+/* A row that can't be taken back (Reset everything, Delete this run) says so in the critical colour. */
+.rf-list-row.is-danger .rf-list-title { color: var(--critical); }
+/* A field takes the width it's given, on a page as in a sheet. Its input is 20 characters wide on its
+   own, and with large text that pushed the field past the card's edge (a plan's Name at 130%). */
+.rf-field { grid-template-columns: minmax(0, 1fr); }
 .card { background: var(--bg-raised); border-radius: var(--radius-lg); box-shadow: var(--shadow-card); padding: var(--space-4); display: grid; gap: var(--space-2); min-width: 0; }
 .card > p, .card p { margin: 0; }
 /* A card's title sits in the card's own rhythm (its gap), not the browser's heading margins (18 px
    above and below, which floated Today's workout title away from its eyebrow). */
 .card > h2 { margin: 0; }
+/* An empty list: a small picture, what will show here and the way to start, centred (as a number's
+   sheet, Chats and Your plans have it). */
+.gh-empty { justify-items: center; text-align: center; padding: var(--space-6) var(--space-4); }
+.gh-empty > p { max-width: 34ch; }
+.gh-empty > .gh-art { --gh-art-size: 56px; } /* (the picture as large as the other empty lists' tiles) */
+.gh-empty > .btn-row { margin-top: var(--space-1); }
 .row-between { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); }
 .btn-row { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .notice { display: flex; gap: var(--space-2); align-items: flex-start; padding: var(--space-3) var(--space-4); border-radius: var(--radius-lg); background: var(--accent-soft); color: var(--label); font-size: .9375rem; line-height: 1.35; }
@@ -340,7 +359,7 @@ button.ex-name::before { content: ''; position: absolute; inset: 0; }
 .ex-muted .ex-name { font-weight: 450; color: var(--label-secondary); cursor: default; }
 .check-list { background: var(--fill-3); }
 .check-done { color: var(--positive); display: inline-flex; }
-.light-train { justify-self: start; text-align: start; height: auto; min-block-size: var(--hit-min); white-space: normal; }
+.light-train { justify-self: start; text-align: start; height: auto; min-block-size: var(--hit-min); white-space: normal; margin-inline-start: calc(-1 * var(--space-4)); } /* (its words on the card's inset) */
 .feel-row { display: grid; gap: var(--space-1); }
 .feel-flare { margin-top: var(--space-1); }
 .feel-done.has-flare { display: grid; gap: var(--space-2); }
@@ -363,6 +382,9 @@ button.ex-name::before { content: ''; position: absolute; inset: 0; }
 .feel-done { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); padding-block: var(--space-2); }
 .insight-line { appearance: none; border: 0; display: flex; align-items: center; gap: var(--space-3); width: 100%; padding: var(--space-3) var(--space-4); border-radius: var(--radius-lg); background: var(--bg-raised); box-shadow: var(--shadow-card); color: var(--label); text-align: start; cursor: pointer; min-height: 56px; }
 .insight-text { display: grid; flex: 1; min-width: 0; }
+/* Its chevron is a list row's, small and quiet (it drew at 20 px in the label's ink, heavier than
+   the Food card's just above it). */
+.insight-line > svg:last-child { flex: none; color: var(--label-tertiary); --rf-icon-size: 16px; --rf-icon-stroke: 2.25; }
 
 /* ---------------------------------------------------------------- plan */
 
@@ -417,12 +439,17 @@ button.stat { cursor: pointer; }
 .hm-cell { display: block; aspect-ratio: 1; min-width: 10px; border-radius: 4px; background: var(--fill-1); }
 .hm-work { background: var(--accent-fill); }
 .hm-light { background: color-mix(in srgb, var(--accent-fill) 45%, var(--bg-raised)); }
+/* Dark: mixed into the card it came out a navy close to the card's own colour; a paler blue reads as
+   a lighter day beside the workouts and apart from the grey rest days. */
+[data-theme^="dark"] .hm-light { background: color-mix(in oklab, var(--accent-fill) 52%, var(--label) 14%); }
 .hm-freeze { background: var(--hue-sky); opacity: .75; }
 .hm-miss { background: transparent; box-shadow: inset 0 0 0 1.5px var(--critical); }
 .hm-plan { background: transparent; box-shadow: inset 0 0 0 1.5px var(--label-tertiary); }
 .hm-future, .hm-rest { background: var(--fill-2); }
 .hm-today { outline: 2px solid var(--label); outline-offset: 1px; }
-.hm-legend { display: flex; flex-wrap: wrap; gap: var(--space-3); color: var(--label-secondary); }
+/* Three to a line on a phone (five wrapped as four and one), all on one line where there's room. */
+.hm-legend { display: grid; grid-template-columns: repeat(3, max-content); gap: 6px var(--space-4); color: var(--label-secondary); }
+@media (min-width: 480px) { .hm-legend { display: flex; flex-wrap: wrap; gap: var(--space-3); } }
 .hm-legend span { display: inline-flex; gap: 6px; align-items: center; }
 .hm-legend .hm-cell { width: 12px; min-width: 12px; }
 .lr-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); }
@@ -470,7 +497,7 @@ textarea.preview { border: 0; resize: vertical; }
 .ob-progress .rf-progress, .pl-prog .rf-progress { width: 100%; }
 .pl-prog .t-caption { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ob-spacer { width: 44px; flex: none; }
-.ob-group { display: grid; gap: var(--space-2); }
+.ob-group { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-2); } /* (as wide as the page: the row to add a weight, a field and a button, pushed the weights past its edge at large text) */
 .ob-group > .rf-list-header, .ob-group > .rf-list-footer { margin: 0; }
 .ob-pad { padding: 0; }
 .ob-pad .rf-segmented { width: 100%; }
@@ -545,8 +572,13 @@ textarea.preview { border: 0; resize: vertical; }
 .pl-timer.is-over .rf-ring-fill { visibility: hidden; } /* (its round end would still draw a dot) */
 /* A rest that doesn't fit (fitRest in player.js: a small phone with large text) has a smaller ring. */
 .pl-rest.is-tight .pl-timer { padding: 0; }
-.pl-rest.is-tight .pl-timer .rf-ring { --_s: 128px; --_w: 9px; }
+.pl-rest.is-tight .pl-timer .rf-ring { --_s: 112px; --_w: 8px; }
 .pl-rest.is-tight .pl-count { font-size: 1.75rem; }
+/* and a compact Up next: a smaller picture and at most two lines of name (a long one, "Overhead
+   extension, 3-sec lowering", took three and pushed the row under the actions). */
+.pl-rest.is-tight .pl-fig-sm { width: 56px; height: 56px; }
+.pl-rest.is-tight .pl-rir, .pl-rest.is-tight .pl-next-row { padding: var(--space-2) var(--space-3); }
+.pl-rest.is-tight .pl-next .t-headline { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
 .pl-rir { width: 100%; max-width: 420px; box-sizing: border-box; display: grid; gap: var(--space-2); padding: var(--space-3); border-radius: var(--radius-lg); background: var(--bg-raised); box-shadow: var(--shadow-card); }
 .pl-rir p { margin: 0; }
 .pl-rir .rf-segmented { width: 100%; }
@@ -581,7 +613,7 @@ button.pl-next-row:active { scale: .98; transition-duration: var(--duration-inst
 .tip { gap: var(--space-1); padding-block: var(--space-3); background: color-mix(in oklab, var(--accent-soft) 70%, var(--bg-raised)); overflow: hidden; }
 .tip-row { display: flex; gap: var(--space-3); align-items: flex-start; }
 .tip-row .rf-list-icon { margin-top: 2px; }
-.tip .rf-btn { justify-self: end; margin-inline-end: calc(-1 * var(--space-3)); } /* "Got it" ends on the card's inset */
+.tip .rf-btn { justify-self: end; margin-inline-end: calc(-1 * var(--space-3)); margin-block-end: calc(-1 * var(--space-2)); } /* "Got it" ends on the card's inset, with as much room under its words as there is over the tip's */
 /* A row of buttons in a card that starts with a plain one: its words start on the card's inset. */
 .card .btn-row > .rf-btn[data-variant="plain"]:first-child { margin-inline-start: calc(-1 * var(--space-3)); }
 
@@ -601,6 +633,7 @@ button.pl-next-row:active { scale: .98; transition-duration: var(--duration-inst
 .celebrate.is-ach .ach-badge { width: 36px; height: 36px; border-radius: 50%; }
 .celebrate-text { display: grid; }
 .news-title { margin: 0 0 var(--space-1); }
+.gh-nw { white-space: nowrap; }
 /* What's new is quick notes, a line each: a small glyph in the accent colour instead of a tile, and
    tight rows. */
 .news-list .rf-list-row { align-items: flex-start; gap: var(--space-3); min-height: 0; padding-block: 9px; }
@@ -636,7 +669,8 @@ button.pl-next-row:active { scale: .98; transition-duration: var(--duration-inst
 .sci-level { display: inline-flex; align-items: center; gap: 8px; }
 .sci-block { display: grid; gap: var(--space-1); }
 .sci-block p { margin: 0; }
-.sci-label { margin: 0; font-size: .6875rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--label-secondary); }
+/* (Sentence case, as a field's label is: "WHAT THE APP DOES" was four words in capitals.) */
+.sci-label { margin: 0; font-size: .8125rem; font-weight: 600; color: var(--label-secondary); }
 .sci-caveat { display: flex; gap: 8px; align-items: flex-start; margin: 0; padding: var(--space-3); border-radius: var(--radius-md); background: color-mix(in oklab, var(--caution-fill) 10%, transparent); color: var(--label-secondary); }
 .sci-caveat svg { flex: none; margin-top: 2px; color: var(--caution-fill); }
 .sci-studies { border-top: 0.5px solid var(--separator); padding-top: var(--space-3); }
@@ -721,7 +755,7 @@ button.pl-next-row:active { scale: .98; transition-duration: var(--duration-inst
 .co-card { gap: var(--space-3); cursor: pointer; }
 .co-head { display: flex; align-items: center; gap: var(--space-2); }
 .co-head > svg:first-child { color: var(--accent); }
-.co-more { display: inline-flex; align-items: center; gap: 2px; color: var(--accent); font-weight: 600; }
+.co-more { display: inline-flex; align-items: center; gap: 2px; color: var(--accent); font-weight: 600; flex: none; white-space: nowrap; } /* ("See all" stays whole beside a title on two lines) */
 .co-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-3); }
 .co-dec { display: grid; grid-template-columns: 30px 1fr auto; gap: var(--space-3); align-items: start; }
 .co-dec .co-ico { width: 30px; height: 30px; }
@@ -754,6 +788,9 @@ button.pl-next-row:active { scale: .98; transition-duration: var(--duration-inst
 .day-row { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: var(--space-4); }
 .day-lines { display: grid; gap: 2px; min-width: 0; }
 .day-lines > p { margin: 0; }
+/* The ring is the food card's size (and grows with the text as it does): at 44 px its number, "7,145",
+   ran out over the ring on both sides. */
+.day-card .rf-ring { --_s: 5.5em; --_w: 8px; font-size: 1rem; }
 .day-card .rf-ring-label { display: grid; justify-items: center; line-height: 1.1; }
 /* Settings rows with a full-width control under the title. */
 .set-stack { flex-direction: column; align-items: stretch; gap: var(--space-2); padding-block: var(--space-3); }

@@ -581,8 +581,6 @@ section('The glass holds back the page\'s words');
   const alpha = (c) => { const m = /\/\s*([\d.]+)\)$|rgba\([^)]*,\s*([\d.]+)\)$/.exec(c); return m ? parseFloat(m[1] || m[2]) : 1; };
   await page.evaluate(() => window.GH.ui.go('today'));
   await wait(900);
-  await page.evaluate(() => { document.getElementById('screen').scrollTop = 400; });
-  await wait(500);
   const detail = async (box) => {
     const png = await page.screenshot({ clip: box });
     return reader.evaluate(async (b64) => {
@@ -608,6 +606,17 @@ section('The glass holds back the page\'s words');
     return { pct: Math.round((sxy / sxx) * 1000) / 10, words: Math.round(Math.abs(clear[top[top.length - 1]])) };
   };
   const edge = { x: 16, y: 844 - 44, width: width - 32, height: 42 };
+  // (Scrolled where words run under that band, not a gap between cards: of a few places, the one
+  // with the most detail there.)
+  let at = 400, most = -1;
+  for (let top = 300; top <= 700; top += 40) {
+    await page.evaluate((t) => { document.getElementById('screen').scrollTop = t; }, top);
+    await wait(150);
+    const d = (await detail(edge)).map(Math.abs).sort((x, y) => y - x);
+    if (d[Math.floor(d.length * 0.03)] > most) { most = d[Math.floor(d.length * 0.03)]; at = top; }
+  }
+  await page.evaluate((t) => { document.getElementById('screen').scrollTop = t; }, at);
+  await wait(500);
   await open('window.GH.ui.sheet({ title: "Glass", size: "fit", body: "<div style=\\"height: 560px\\"></div>" })');
   const glass = await page.evaluate(() => { const g = document.querySelector('dialog.gh-sheet[open] .gh-sheet-glass'); return { bg: getComputedStyle(g).backgroundColor, blur: getComputedStyle(g).backdropFilter, detent: document.querySelector('dialog.gh-sheet[open]').dataset.detent }; });
   const through = await detail(edge);

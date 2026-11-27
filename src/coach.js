@@ -130,7 +130,7 @@
       else if (f.steps7.n >= 3) headline = `About ${int(Math.round(f.steps7.avg))} steps a day this week.`;
       else { headline = 'A quiet week so far.'; addFocus('Log your weight and sleep', 'Log your weight and sleep, or connect Health Connect, and this fills in.'); }
     } else if (!f.logs.length) { headline = 'Your first workout counts most.'; addFocus('Do your first workout', 'Do your first workout. The plan starts easy on purpose.'); }
-    else if (f.week && f.week.phase.deload) headline = 'Deload week: lighter on purpose.';
+    else if (f.week && f.week.phase.deload) headline = 'A lighter week, on purpose.';
     else if (f.planned && f.done === f.planned) headline = f.done === 1 ? 'One workout in, right on plan.' : `Every workout so far: ${f.done} of ${f.done}.`;
     else if (f.missed) headline = `${f.missed === 1 ? 'One workout' : `${f.missed} workouts`} missed this week.`;
     else if (f.streak.current >= 7) headline = `${f.streak.current} days in a row. That's a habit forming.`;
@@ -291,8 +291,8 @@
     },
     deload: (S, day, f) => {
       const w = f.week;
-      const a = w && w.phase.deload ? 'This is a deload week: about 40% less volume.' : 'A deload is a lighter week, about 40% less volume. It comes every 5th week, or sooner if you rate two workouts in a row too hard while sleeping badly.';
-      return `${a} Coaches use deloads to shed built-up fatigue before the next block. A lighter week doesn't cost you muscle.`;
+      const a = w && w.phase.deload ? 'This is a lighter week: about 40% less volume.' : 'A lighter week (a deload) has about 40% less volume. It comes every 5th week, or sooner if you rate two workouts in a row too hard while sleeping badly.';
+      return `${a} It's there to shed built-up fatigue before the next block. A lighter week doesn't cost you muscle.`;
     },
     abs: (S, day, f) => 'Ab training builds the muscle but doesn\'t burn the fat over it: in a 6-week study of ab work alone, belly fat didn\'t change. Visible abs take the muscle plus lower body fat over months, which is mostly food and daily movement. Track your waist and ab levels in Progress rather than a date.',
     focus: (S, day, f) => report(S, day).focus.join(' '),
@@ -358,7 +358,10 @@
   const MARKS = /^(?:\s*(?:[-*+•]|\d{1,3}[.)])\s+|\s{0,3}#{1,6}\s+)/;
   function keepToGiven(text, given) {
     const known = near(numbers(given)), givenPct = percents(given), knownPct = (n) => givenPct.includes(n);
-    const ok = (x) => { const s = x.replace(EMBED, ''); return numbers(s).every(known) && percents(s).every(knownPct); };
+    return keepLines(text, (x) => { const s = x.replace(EMBED, ''); return numbers(s).every(known) && percents(s).every(knownPct); });
+  }
+  // The text less every sentence (or table row) that ok() turns down. { text, cut }.
+  function keepLines(text, ok) {
     const src = String(text || '').trim();
     let cut = 0;
     const lines = src.split('\n').map((line) => {
@@ -375,6 +378,27 @@
     const out = lines.filter((l) => l !== null).join('\n').replace(/^(\s*\|.*\n)(\s*\|[\s|:-]+\|?\s*)$(?!\n\s*\|)/gm, '');
     return { text: out.replace(/\n{3,}/g, '\n\n').trim(), cut };
   }
+  // What a model may not say, whoever asks (research_notes: ai_made_plans, section 6): a diet, a
+  // calorie deficit or surplus, a weight or body-fat target, a diagnosis, medicine or supplements.
+  // A sentence that does goes, like one with a made-up number. And with strict (someone under 18,
+  // or lean: GH.person.strict), anything about losing weight or eating less.
+  const UNSAFE = [
+    /\b(meal plans?|diet plans?|keto\w*|(intermittent )?fasting|juice cleanse|detox|cheat (day|meal)s?|low[- ]carb|(cut|no|zero) (out )?carbs)\b/i,
+    /\b(calorie|caloric|energy) (deficit|surplus)\b|\b(in|into|at) a (deficit|surplus)\b|\bbulking\b|\bon a (bulk|cut)\b|\bcutting (phase|diet)\b/i,
+    /\b(lose|drop|shed|gain|put on)\s+(about |around |up to |at least |another )?\d+(\.\d+)?\s*(lb|lbs|pounds?|kg|kilos?|kilograms?|stone)\b/i,
+    /\b(target|goal|ideal) (body ?)?weight\b|\b(get|be|come) (down|up) to \d+(\.\d+)?\s*(lb|lbs|pounds?|kg|kilos?)\b|\b\d+(\.\d+)?\s*(%|percent)\s*body ?fat\b|\bbody ?fat (percentage|target|goal)\b/i,
+    /\byou (probably |likely |may |might |could )?(have|are suffering from)\b[^.]*\b(tendin\w+|arthritis|hernia\w*|sciatica|impingement|tear|torn|sprain|fracture|deficien\w+|disorder|syndrome|disease|infection)\b/i,
+    /\b(ibuprofen|paracetamol|acetaminophen|aspirin|naproxen|painkillers?|anti-inflammator\w+|steroids?|testosterone|sarms?|dosage|\d+\s*mg|supplements|creatine|pre-workout|fat burners?|bcaas?|multivitamins?|vitamin [a-e]\d*)\b/i,
+    // Food rules past a small, optional idea: cutting out a kind of food, timing rules (when you eat
+    // doesn't matter: research_notes, low_protein_diet 4) and set meals.
+    /\b(cut(ting)? out|giv(e|ing) up|eliminat\w+|avoid(ing)?|stop eating|no more)\s+(all\s+)?(sugar|carbs?|carbohydrates|fats?|dairy|gluten|bread|rice|pasta|grains|meat)\b/i,
+    /\banabolic window\b|\bwithin \d+ (minutes?|mins?|hours?) (of|after|before) (your |a |each |every )?(workout|training|session|lifting)\b|\b\d+ (small |big |smaller )?meals a day\b|\beat(ing)? every \d+ hours\b|\b(no|stop eating|don'?t eat) (\w+ )?after \d+ ?(pm|p\.m\.|o'clock)\b/i,
+  ];
+  const NO_LOSS = /\b(los(e|ing) (the |some |any |that |your |more |body )?(weight|fat|inches|pounds|kilos|a few (pounds|kilos|lb|kg))|weight loss|fat loss|burn(ing|s)? (off )?(fat|calories)|slim(ming)? down|lean(ing)? out|shred\w*|trim(ming)? (down|fat)|cut(ting)? (weight|fat|calories)|cut(ting)? back on (food|eating|calories|carbs|sugar|snacks|portions)|eat(ing)? (less|fewer)|fewer calories|skip(ping)? (a )?meals?|(?<!sleep )deficit|belly fat)\b/i;
+  const unsafe = (x, strict) => UNSAFE.some((re) => re.test(x)) || (!!strict && NO_LOSS.test(x));
+  const keepSafe = (text, strict) => keepLines(text, (x) => !unsafe(x, strict));
+  const SAFE_NOTE = 'Left out advice on diet or medicine. That\'s for a doctor or dietitian.';
+
   // An answer's words without its marks or embeds, to tell how much of it there is.
   const bare = (x) => String(x || '').replace(EMBED, '').replace(/^\s*(?:[-+•]|\d{1,3}[.)])\s+/gm, '').replace(/[*_#|`>]+/g, '').replace(/\s+/g, ' ').trim();
   // An AI's answer as shown: its own words, less any sentence with a number it wasn't given. If that
@@ -384,10 +408,14 @@
   // { text, note, cut, replaced }.
   function grounded(S, day, question, raw, given, start, who) {
     const text = String(raw || '').trim();
-    const k = keepToGiven(text, given);
+    const n = keepToGiven(text, given);
+    // (Diet, medicine and, for someone under 18 or lean, weight loss: keepSafe.)
+    const safe = keepSafe(n.text, !!(GH.person && GH.person.strict(S, day)));
+    const k = { text: safe.text, cut: n.cut + safe.cut };
     const after = (x) => { const lead0 = String(start || '').trim(); return bare(lead0 && x.startsWith(lead0) ? x.slice(lead0.length) : x); };
     const words = after(k.text);
-    if (words.length >= (k.cut ? 30 : 8)) return { text: k.text, note: k.cut ? 'Left out a line with a number that isn\'t in your data.' : null, cut: k.cut, replaced: false };
+    const note = [n.cut ? 'Left out a line with a number that isn\'t in your data.' : '', safe.cut ? SAFE_NOTE : ''].filter(Boolean).join(' ') || null;
+    if (words.length >= (k.cut ? 30 : 8)) return { text: k.text, note, cut: k.cut, replaced: false };
     const own = ask(S, day, question).text;
     const name = who || 'The model';
     const why = after(text) ? `${name}'s answer didn't match your numbers` : `${name} didn't answer`;
@@ -440,7 +468,7 @@
     }
     const ex = why('exercise');
     if (ex) out.push({ icon: 'bolt', tone: 'amber', text: 'Easier on your legs, no finisher', why: `${ex.text.split(':')[0]}.`, rule: 'sleep' });
-    if (s.phase && s.phase.deload) out.push({ icon: 'moon', tone: 'indigo', text: 'Deload week: about 40% less volume', why: 'Every 5th week, or sooner when workouts feel too hard on poor recovery.', rule: 'deload' });
+    if (s.phase && s.phase.deload) out.push({ icon: 'moon', tone: 'indigo', text: 'Lighter week: about 40% less volume', why: 'Every 5th week, or sooner when workouts feel too hard on poor recovery.', rule: 'deload' });
     else if (s.phase && s.phase.onramp) out.push({ icon: 'sun', tone: 'amber', text: 'Easing in with fewer sets this week', why: s.phase.idle ? 'Coming back after time off.' : 'Your first weeks build up gradually.', rule: 'volume' });
     if (s.comeback) out.push({ icon: 'refresh', tone: 'teal', text: `About ${Math.round((1 - s.comeback.mult) * 100)}% lighter weights today`, why: `${s.comeback.days} days since your last workout.`, rule: 'comeback' });
     for (const it of s.items || []) if (it.swappedFrom && M && M.MOVES[it.swappedFrom]) out.push({ icon: 'shuffle', tone: 'coral', text: `${M.MOVES[it.swappedFrom].name} swapped for ${it.name}`, why: 'A joint you flagged is having a break.', rule: null });
@@ -563,6 +591,44 @@
     const prog = b.programFor(p);
     const room = b.GROUPS.filter((g) => prog.tiers[g] === 1 && S.vol[g] < prog.cap[g]);
     if (easy >= 3 && room.length) out.push({ id: `vol-${ws}`, icon: 'layers', title: 'Add a set a week to your top goals?', body: `${easy} of your last 4 workouts felt too easy.`, action: { kind: 'volume', label: 'Add sets' } });
+    // 6. 1.15: workouts keep being missed, two weeks running: a smaller plan. A week you finish is
+    // what builds the habit (2 of 3 done still counts as a kept week; next week's target comes from
+    // what you did, Adams et al. 2017). One day fewer, dropping the day missed most; at two days a
+    // week, shorter sessions instead. Offered, never applied by itself.
+    if (p.workouts !== false) {
+      const two = [ws - 14, ws - 7].map((w) => cal.weeks[w]).filter((w) => w && !(w.phase && w.phase.deload));
+      // (A missed session is dropped from its week once the week is over: planned counts them all.)
+      const count = (w) => [w.sessions.length, w.sessions.filter((x) => x.done).length];
+      const tally = two.map(count);
+      const planned = tally.reduce((a, t) => a + t[0], 0), did = tally.reduce((a, t) => a + t[1], 0);
+      if (two.length === 2 && tally.every((t) => t[0] >= 2 && t[1] < t[0]) && planned - did >= 3) {
+        const said = `You did ${did} of ${planned} planned workouts in the last two weeks.`;
+        if (p.days > 2) {
+          const n = p.days - 1;
+          const worst = Object.entries(misses).sort((a, x) => x[1] - a[1] || Number(x[0]) - Number(a[0]))[0];
+          out.push({ id: `days-${n}`, icon: 'calendar', title: `Plan ${n} workouts a week?`, body: `${said} A week you can finish is easier to keep going, and a day can come back any time.`, action: { kind: 'days', value: n, drop: worst ? Number(worst[0]) : null, label: `Plan ${n} days` } });
+        } else if (p.minutes > 10) {
+          const m = Math.max(10, p.minutes - (p.minutes > 20 ? 10 : 5));
+          out.push({ id: `short-${m}`, icon: 'clock', title: `Plan ${m} minute workouts?`, body: `${said} Shorter ones are easier to start, and they still count.`, action: { kind: 'minutes', value: m, label: `Set ${m} min` } });
+        }
+      }
+    }
+    // 7. 1.15: eating (profile.eats, or the food log standing in for the protein answer), for adults.
+    // The smallest steps with something behind them, each offered until it's dismissed, then never
+    // again: one more protein serving a day of 20 to 30 g with a meal that's already a habit (no
+    // timing rules, Schoenfeld et al. 2013); a piece or two of fruit, for health and maybe recovery,
+    // never for muscle (Aune et al. 2017; Rickards et al. 2021); and for someone lean who wants size,
+    // enough food before more training (a deficit blunts muscle gain, Murphy & Koehler 2022).
+    const eats = b.eatsOf ? b.eatsOf(p) : null;
+    if (eats && !eats.minor) {
+      if (eats.protein === 'low') {
+        out.push({ id: 'eat-protein', icon: 'check-circle', title: 'One more protein serving a day', body: `${eats.from === 'log' ? 'Your food log shows little protein' : 'You said protein-rich food is rare for you'}. The smallest step that helps is one more serving a day, about 20 to 30 g, with a meal you already eat: eggs or yogurt at breakfast, a glass of milk, beans, or a shake.${p.protein && p.protein.track !== false ? ' Tap + on the protein counter when you have it.' : ''}` });
+        const bmi = p.weightKg > 0 && p.heightCm > 0 ? p.weightKg / Math.pow(p.heightCm / 100, 2) : null;
+        const size = (p.goals || []).some((g) => ['abs', 'arms', 'chest', 'legs', 'back', 'shoulders'].includes(g));
+        if (bmi != null && bmi < 21 && size && p.weightGoal !== 'lose') out.push({ id: 'eat-enough', icon: 'leaf', title: 'Eat enough to grow', body: 'You\'re lean for your height, and muscle is built from food. If your weight isn\'t creeping up over a few weeks, add a snack a day before adding any training.' });
+      }
+      if (eats.produce === 'low') out.push({ id: 'eat-fruit', icon: 'leaf', title: 'A piece of fruit a day', body: 'You said fruit and vegetables are rare for you. One or two pieces of fruit a day is a good first step. It\'s for your health and may help you recover a little. It doesn\'t build muscle by itself.' });
+    }
     // 5. Plain advice.
     const f = facts(S, day);
     if (f.sleep7.n >= 4 && f.sleep7.avg < 390) out.push({ id: `tip-sleep-${ws}`, icon: 'moon', title: 'Aim for an earlier, steadier bedtime', body: `You're averaging ${hrs(f.sleep7.avg)}. A regular bedtime, weekends included, helps more than catching up.` });
@@ -571,7 +637,9 @@
     if (f.steps7.n >= 4 && f.steps7.avg < sg.goal * 0.75) out.push({ id: `tip-steps-${ws}`, icon: 'navigate', title: 'A walk after one meal a day', body: `You're at ${int(Math.round(f.steps7.avg))} steps against a goal of ${int(sg.goal)}. Ten minutes after a meal adds about 1,000.` });
     if (GH.food && GH.food.suggestions) for (const x of GH.food.suggestions(S, day)) out.push(x);
     const gone = S.coachDismissed || {};
-    return out.filter((x) => !(gone[x.id] > day - 14)).concat(aiSuggestions(S, day).filter((x) => !(gone[x.id] > day - 14)));
+    // (The eating steps are offered once: dismissed, they stay away.)
+    const hidden = (x) => (/^eat-/.test(x.id) ? gone[x.id] != null : gone[x.id] > day - 14);
+    return out.filter((x) => !hidden(x)).concat(aiSuggestions(S, day).filter((x) => !(gone[x.id] > day - 14)));
   }
   // Suggestions Claude made (API mode), after validation: same shape as the built-in ones.
   function aiSuggestions(S, day) {
@@ -587,6 +655,8 @@
     if (a.kind === 'weekday') { const o = b.weekdaysFor(p); return Number.isInteger(a.from) && Number.isInteger(a.to) && o.includes(a.from) && !o.includes(a.to) && a.to >= 0 && a.to <= 6; }
     if (a.kind === 'deload') return !(S.events || []).some((e) => e.type === 'deloadNext' && b.weekStart(e.day) === b.weekStart(day));
     if (a.kind === 'volume') { const prog = b.programFor(p); return b.GROUPS.some((g) => prog.tiers[g] === 1 && S.vol[g] < prog.cap[g]); }
+    // (1.15: fewer days a week, never more: a smaller plan for weeks that keep being missed.)
+    if (a.kind === 'days') return Number.isInteger(a.value) && a.value >= 2 && a.value < p.days && (a.drop == null || (Number.isInteger(a.drop) && a.drop >= 0 && a.drop <= 6));
     return false;
   }
   // Applies a suggestion's action; returns the lines to show (what changed).
@@ -599,6 +669,14 @@
     if (a.kind === 'minutes') { b.reprogram(S, { minutes: a.value }, day); text = `Workouts planned for ${a.value} minutes`; }
     else if (a.kind === 'weekday') { const w = b.weekdaysFor(p).map((x) => (x === a.from ? a.to : x)).sort((x, y) => x - y); b.reprogram(S, { weekdays: w }, day); text = `${WD[a.from]} workouts move to ${WD[a.to]}`; }
     else if (a.kind === 'deload') { S.events.push({ type: 'deloadNext', day }); text = 'Next week is a lighter week'; }
+    else if (a.kind === 'days') {
+      // The days trained now, without the one missed most (else the last), down to the new count.
+      let w = b.weekdaysFor(p).slice();
+      if (a.drop != null && w.includes(a.drop)) w = w.filter((x) => x !== a.drop);
+      while (w.length > a.value) w.pop();
+      b.reprogram(S, { days: a.value, weekdays: w }, day);
+      text = `${a.value} workouts a week: ${list(w.map((x) => WD[x]))}`;
+    }
     else if (a.kind === 'volume') {
       const prog = b.programFor(p);
       const up = b.GROUPS.filter((g) => prog.tiers[g] === 1 && S.vol[g] < prog.cap[g]);
@@ -610,5 +688,5 @@
   }
   function dismiss(S, id, day) { S.coachDismissed = S.coachDismissed || {}; S.coachDismissed[id] = day; }
 
-  GH.coach = { report, glance, ask, verdict, correction, topicOf, facts, keepToGiven, grounded, noEmbeds, claudePrompt, decisions, timeline, watching, suggestions, validAction, apply, dismiss };
+  GH.coach = { report, glance, ask, verdict, correction, topicOf, facts, keepToGiven, keepSafe, unsafe, grounded, noEmbeds, claudePrompt, decisions, timeline, watching, suggestions, validAction, apply, dismiss };
 })(typeof window !== 'undefined' ? window : globalThis);

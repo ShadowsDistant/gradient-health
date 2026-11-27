@@ -66,6 +66,9 @@ button.cp-inuse-row { cursor: pointer; }
 .cp-make-tile { appearance: none; border: 0; margin: 0; font: inherit; color: var(--label); text-align: start; cursor: pointer; display: grid; align-content: start; gap: 4px; min-width: 0; padding: var(--space-4); border-radius: var(--radius-lg); background: var(--bg-raised); box-shadow: var(--shadow-card); }
 .cp-make-tile:first-child { grid-column: 1 / -1; grid-template-columns: auto minmax(0, 1fr); column-gap: var(--space-3); align-items: center; }
 .cp-make-tile:first-child .cp-make-ico { grid-row: 1 / 3; }
+/* The two small tiles share their rows (icon, title, words), so when one title takes two lines
+   ("Add a shared / plan" at 360 px) the words under both still start on one line. */
+.cp-make-tile:not(:first-child) { grid-row: span 3; grid-template-rows: subgrid; row-gap: 4px; }
 .cp-make-ico { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; margin-bottom: 6px; color: #fff; --rf-icon-size: 21px; --rf-icon-stroke: 2.1; background: var(--hue-indigo); box-shadow: inset 0 1px 0 rgb(255 255 255 / .28); }
 .cp-make-tile:first-child .cp-make-ico { width: 48px; height: 48px; border-radius: 14px; margin: 0; --rf-icon-size: 24px; }
 .cp-make-tile[data-tone="violet"] .cp-make-ico { background: var(--hue-violet); }
@@ -133,7 +136,7 @@ button.cp-wk-row:active { background: var(--fill-selected); }
 .cp-day-eyebrow { display: inline-flex; flex-wrap: wrap; align-items: baseline; column-gap: 6px; margin: 0; font-size: .75rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--label-secondary); }
 .cp-day-eyebrow > b, .cp-day-eyebrow > span:not(.cp-imp-title) { white-space: nowrap; }
 .cp-day-eyebrow > b { color: var(--accent); font-weight: 750; }
-.cp-day-title { appearance: none; box-sizing: border-box; width: 100%; margin: 0 0 2px calc(var(--space-2) * -1); padding: 4px var(--space-2); border: 0; border-radius: 10px; background: transparent; color: var(--label); font: inherit; font-size: 1.375rem; font-weight: 700; line-height: 1.25; letter-spacing: -.01em; }
+.cp-day-title { appearance: none; box-sizing: border-box; width: 100%; margin: 0 0 2px calc(var(--space-2) * -1); padding: 4px var(--space-2); border: 0; border-radius: 10px; background: transparent; color: var(--label); font: inherit; font-size: 1.375rem; font-weight: 700; line-height: 1.25; letter-spacing: -.01em; text-overflow: ellipsis; }
 .cp-day-title::placeholder { color: var(--label-tertiary); font-weight: 650; }
 .cp-day-title:hover { background: var(--fill-3); }
 .cp-day-title:focus { outline: none; background: var(--fill-3); box-shadow: 0 0 0 2px var(--focus-ring); }
@@ -199,7 +202,9 @@ button.cp-wk-row:active { background: var(--fill-selected); }
 /* The picker: search and filters stay at the top, the list scrolls, the tray stays at the bottom. */
 .gh-sheet.cp-picker .rf-sheet-body { display: flex; flex-direction: column; min-height: 0; padding: 0; overflow: hidden; }
 .cp-pick { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
-.cp-pick-top { flex: none; display: grid; gap: var(--space-2); padding: var(--space-1) var(--space-4) var(--space-2); border-bottom: 1px solid var(--separator); }
+/* (One column as wide as the sheet, not as wide as the search field asks to be: with large text on a
+   360 px phone the field, 20 characters wide on its own, ran off the right edge.) */
+.cp-pick-top { flex: none; display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-2); padding: var(--space-1) var(--space-4) var(--space-2); border-bottom: 1px solid var(--separator); }
 .cp-q { position: relative; display: flex; align-items: center; gap: var(--space-2); padding-inline: var(--space-3) var(--space-1); border-radius: var(--radius-full); min-height: 44px; }
 .cp-q > .rf-icon { flex: none; --rf-icon-size: 18px; }
 .cp-q .rf-input { flex: 1; min-width: 0; border: 0; background: none; box-shadow: none; padding-inline: 0; }
@@ -268,6 +273,24 @@ button.cp-wk-row:active { background: var(--fill-selected); }
 .cp-share-btns { display: flex; flex-wrap: wrap; gap: var(--space-2); justify-content: center; width: 100%; }
 .cp-share-btns .rf-btn { flex: 1 1 9em; justify-content: center; }
 .cp-share .rf-list { width: 100%; text-align: start; }
+/* The plan code: every character as wide as the next, a group never split over two lines. */
+.cp-code-box { display: grid; gap: var(--space-2); justify-items: center; width: 100%; box-sizing: border-box; padding: var(--space-3); border-radius: var(--radius-lg); background: var(--fill-3); }
+.cp-code-box > p { margin: 0; }
+.cp-code, .cp-code-in { font: 600 1.0625rem/1.5 var(--font-mono); font-variant-numeric: tabular-nums; letter-spacing: .04em; }
+.cp-code { display: flex; flex-wrap: wrap; justify-content: center; gap: 2px .75em; max-height: 9em; overflow-y: auto; user-select: all; -webkit-user-select: all; }
+.cp-code > span { white-space: nowrap; }
+/* Adding one by its code: the field, what it holds or what's wrong under it (two lines kept for it, so
+   nothing moves as it changes), then the ways on. */
+.cp-enter { gap: var(--space-3); padding-bottom: var(--space-4); }
+.cp-code-in { min-height: 5.6em; resize: none; overflow-wrap: anywhere; }
+.cp-code-say { display: flex; align-items: flex-start; gap: 6px; margin: 0; min-height: 2.7em; color: var(--label-secondary); --rf-icon-size: 16px; }
+.cp-code-say > .rf-icon { flex: none; margin-top: 1px; opacity: 1; }
+.cp-code-say[data-tone="positive"] { color: var(--positive); font-weight: 600; }
+.cp-code-say[data-tone="caution"] { color: color-mix(in oklab, var(--hue-amber), var(--label) 30%); }
+.cp-enter-scan { justify-self: center; }
+.cp-kit { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--space-2) 8px; --rf-icon-size: 18px; }
+.cp-kit > .rf-icon { align-self: start; margin-top: 0; }
+.cp-kit > .rf-btn { grid-column: 2; justify-self: start; }
 
 /* A shared plan, and one the coach built: the plan's head, its days, then save. */
 .cp-import { gap: var(--space-3); padding-bottom: var(--space-6); }
@@ -293,6 +316,22 @@ button.cp-wk-row:active { background: var(--fill-selected); }
 .cp-knows-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px var(--space-3); }
 .cp-knows-list > li { display: contents; }
 .cp-knows-list .t-footnote:last-child { overflow-wrap: anywhere; }
+.cp-knows > .rf-btn { justify-self: start; }
+/* Build me a plan: the quick choices above the field, why a built plan is this person's (in the
+   sheet and on the plan's page), and what the app put right in a model's take. */
+.cp-quicks { display: grid; gap: var(--space-3); }
+.cp-quick { display: grid; gap: 6px; min-width: 0; }
+.cp-quick > p { margin: 0; }
+.cp-why-box, .cp-fixes { display: grid; gap: var(--space-2); padding: var(--space-3); border-radius: var(--radius-lg); background: color-mix(in oklab, var(--hue-violet) 8%, var(--fill-3)); }
+.cp-fixes { background: var(--fill-3); }
+.cp-why-box > p, .cp-fixes > p, .cp-why-card > p { margin: 0; }
+.cp-fixes > ul { margin: 0; padding-inline-start: 1.25em; display: grid; gap: 4px; overflow-wrap: anywhere; }
+.cp-why { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); }
+.cp-why > li { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; align-items: start; }
+.cp-why > li > svg { color: var(--hue-violet); margin-top: 3px; }
+.cp-why > li > span { overflow-wrap: anywhere; }
+.cp-why-card { display: grid; gap: var(--space-2); }
+.cp-day-why { margin: 0; overflow-wrap: anywhere; }
 
 /* Plan tab: the plan in use, above the week. */
 .cp-banner { padding: var(--space-2); border-radius: var(--radius-xl); }

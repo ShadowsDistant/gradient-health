@@ -1573,6 +1573,8 @@
       if (variant.pause) m.rep = pauseAt(m.rep, variant.pause[0], variant.pause[1]);
       if (variant.half) m.rep = oneAndHalf(m.rep);
       if (variant.uni) { m.uni = true; if (!m.leadLimbs) m.leadLimbs = ['aN']; }
+      // A slow, paused or 1.5-rep version makes a light weight count for more (src/brain.js weightFit).
+      if (variant.ecc || variant.pause || variant.half) m.tempo = true;
     }
     if (!m.muscles) m.muscles = base.muscles;
     // How many of the muscles, from the front of the list, are primary movers (the rest help).
@@ -1599,6 +1601,11 @@
   move('curl_std', 'curl', { ...CURL, name: 'Dumbbell curl', req: ['db'], range: [8, 25], start: 12, cues: CURL_CUES });
   move('curl_slow', 'curl', { ...CURL, name: 'Curl, 3-sec lowering', req: ['db'], range: [6, 20], start: 10, cues: withCue(CURL_CUES, SLOW) }, { ecc: 3000 });
   move('curl_half', 'curl', { ...CURL, name: '1.5-rep curl', req: ['db'], range: [6, 16], start: 8, complex: true, cues: withCue(CURL_CUES, HALF) }, { half: true });
+  // 1.15 (since: 15, here and below): one-arm and slow versions the ladders lacked, and close-grip
+  // push-ups for the triceps. Only weeks planned with 1.15's personal plans use them (src/brain.js
+  // personal), so earlier weeks replay as they were.
+  move('curl_hammer_slow', 'hammer', { ...CURL, name: 'Hammer curl, 3-sec lowering', req: ['db'], range: [6, 20], start: 10, since: 15, pos: 'stand', grip: 'hold',
+    cues: [SLOW, 'Thumbs up, palms facing in.', 'Elbows pinned to your sides.'] }, { ecc: 3000 });
   // Single-arm versions used for the extra lead-side set (not ladder rungs).
   move('curl_1arm', 'curl1', { ...CURL, name: 'Single-arm curl', req: ['db'], range: [8, 25], start: 12, uni: true, cues: CURL_CUES });
   move('hammer_1arm', 'hammer1', { ...CURL, name: 'Single-arm hammer curl', req: ['db'], range: [10, 30], start: 14, uni: true, cues: ['Thumb up, palm facing in.', 'Elbow pinned to your side.', 'Lower all the way down.'] });
@@ -1625,6 +1632,17 @@
     cues: ['Hands close, thumbs and fingers touching.', 'Elbows brush your ribs on the way down.', 'Body in one straight line.'], mistake: 'Hips sagging toward the floor.' });
   move('tri_oh1', 'ohExt1', { ...TRI, name: 'Single-arm overhead extension, paused', req: ['db'], load: 'db', range: [6, 16], start: 8, uni: true,
     cues: ['Elbow points straight up.', PAUSE_BOTTOM, 'Other hand braces the working elbow.'] }, { pause: ['ecc', 1000] });
+
+  // The triceps' long head grows most worked overhead, at long length, and with lighter weights
+  // than at the side (Maeo et al. 2023): one arm at a time, a light dumbbell is enough.
+  move('tri_oh_one', 'ohExt1', { ...TRI, name: 'Single-arm overhead extension', req: ['db'], load: 'db', range: [8, 25], start: 12, uni: true, since: 15, pos: 'stand', grip: 'hold', overhead: true,
+    cues: ['Elbow points straight up, close to your head.', 'Lower the weight behind your head until you feel a stretch.', 'Other hand steadies the working elbow.'] });
+  // Close-grip push-ups: the triceps' other heads, with your body weight (Kikuchi & Nakazato 2017).
+  const CLOSE = { ...TRI, req: [], load: null, since: 15, hands: true, muscles: ['triceps', 'chest'], joints: ['wrist', 'elbow', 'shoulder'], mistake: 'Hips sagging toward the floor.', breathe: 'Breathe in on the way down, out as you push.' };
+  move('tri_close_incline', 'inclinePush', { ...CLOSE, name: 'Close-grip incline push-up', req: ['chair'], range: [8, 20], start: 10, pos: 'stand',
+    cues: ['Hands on the couch edge, a hand\'s width apart.', 'Elbows brush your ribs on the way down.', 'Body in one straight line.'] });
+  move('tri_close_knee', 'kneePush', { ...CLOSE, name: 'Close-grip knee push-up', range: [6, 20], start: 8, pos: 'kneel',
+    cues: ['Knees down, hands a hand\'s width apart.', 'Elbows brush your ribs on the way down.', 'Hips in line with your back.'] });
 
   /* Chest */
   const PUSH = { group: 'chest', joints: ['wrist', 'shoulder', 'elbow'], load: null, mistake: 'Hips sagging or piking up.', breathe: 'Breathe in on the way down, out as you push.' };
@@ -1660,6 +1678,8 @@
     cues: ['Long stance, both feet pointing forward.', 'Drop the back knee toward the floor.', 'Front heel stays down.'] });
   move('sq_lunge', 'lunge', { ...SQ, ...UNI_LEG, name: 'Reverse lunge', req: [], load: null, range: [8, 20], start: 10, uni: true,
     cues: ['Step back and lower straight down.', 'Front knee over your middle toes.', 'Push through the front heel to return.'] });
+  move('sq_split_slow', 'split', { ...SQ, ...UNI_LEG, name: 'Split squat, 3-sec lowering', req: [], load: null, range: [6, 16], start: 8, uni: true, since: 15, pos: 'stand', oneLeg: true, deep: true,
+    cues: [SLOW, 'Drop the back knee toward the floor.', 'Front heel stays down.'] }, { ecc: 3000 });
   move('sq_bulgarian', 'bulgarian', { ...SQ, ...UNI_LEG, name: 'Bulgarian split squat', req: ['chair'], load: null, range: [6, 16], start: 8, uni: true, complex: true,
     cues: ['Back foot laces-down on the couch.', 'Lower straight down, torso slightly forward.', 'Drive up through the front heel.'] });
   move('sq_pistol', 'pistol', { ...SQ, ...UNI_LEG, name: 'Pistol to chair', req: ['chair'], load: null, range: [4, 12], start: 5, uni: true, complex: true,
@@ -1729,6 +1749,8 @@
     cues: ['Lie face down, lift your chest and arms.', 'Pull your elbows down to your ribs.', 'Reach back out without touching down.'], mistake: 'Cranking your neck up to look ahead.' });
   move('row_door', 'doorRow', { ...ROW, name: 'Doorframe row', req: [], load: null, range: [8, 20], start: 10, joints: ['elbow', 'shoulder'],
     cues: ['Grip the doorframe at chest height, toes close to it.', 'Lean back on straight arms, body in one line.', 'Pull your chest to the frame.'], mistake: 'Bending at the hips instead of pulling.' });
+  move('row_door_slow', 'doorRow', { ...ROW, name: 'Doorframe row, 3-sec lowering', req: [], load: null, range: [6, 16], start: 8, joints: ['elbow', 'shoulder'], since: 15, pos: 'stand', grip: 'pull',
+    cues: [SLOW, 'Lean back on straight arms, body in one line.', 'Pull your chest to the frame.'], mistake: 'Bending at the hips instead of pulling.' }, { ecc: 3000 });
   move('row_band_high', 'bandHighRow', { ...ROW, name: 'Band high row', req: ['band', 'door'], load: 'band', range: [12, 30], start: 15, joints: ['elbow', 'shoulder'],
     cues: ['Band anchored at the top of a closed door.', 'Pull your hands to your chest, elbows out and down.', 'Squeeze your shoulder blades.'] });
   move('row_towel', 'towelRow', { ...ROW, name: 'Towel door row', req: ['towel', 'door'], load: null, range: [10, 25], start: 12, joints: ['elbow'],
@@ -2056,12 +2078,12 @@
     triceps: { name: 'Triceps', group: 'triceps', rungs: ['tri_skull', 'tri_oh', 'tri_band', 'tri_band_oh', 'tri_dip_bent', 'tri_oh_slow', 'tri_dip', 'tri_diamond', 'tri_oh1'] },
     push: { name: 'Push-ups', group: 'chest', rungs: ['push_wall', 'push_incline', 'push_knee', 'push_std', 'push_slow', 'push_pause', 'push_decline', 'push_archer'] },
     chestDb: { name: 'Floor press', group: 'chest', accessory: true, rungs: ['chest_press', 'chest_press_slow', 'chest_fly', 'chest_press1', 'chest_press_half'] },
-    squat: { name: 'Squats and lunges', group: 'legs', rungs: ['sq_bw', 'sq_goblet', 'sq_goblet_pause', 'sq_stepup', 'sq_split', 'sq_lunge', 'sq_goblet_lunge', 'sq_bulgarian', 'sq_pistol'] },
+    squat: { name: 'Squats and lunges', group: 'legs', rungs: ['sq_bw', 'sq_goblet', 'sq_goblet_pause', 'sq_stepup', 'sq_split', 'sq_lunge', 'sq_split_slow', 'sq_goblet_lunge', 'sq_bulgarian', 'sq_pistol'] },
     hinge: { name: 'Hinges', group: 'legs', rungs: ['hg_bridge', 'hg_deadlift', 'hg_swing', 'hg_rdl', 'hg_bridge1', 'hg_sldl', 'hg_sldl_slow', 'hg_swing1'] },
     glute: { name: 'Glute bridges', group: 'legs', accessory: true, rungs: ['gl_bridge', 'gl_kbbridge', 'gl_thrust', 'gl_thrust_pause', 'gl_bridge1', 'gl_thrust1'] },
     hamCurl: { name: 'Hamstring curls', group: 'legs', accessory: true, rungs: ['ham_walkout', 'ham_slide', 'ham_band_gm', 'ham_slide1', 'ham_nordic'] },
     calf: { name: 'Calves', group: 'legs', accessory: true, rungs: ['calf_bw', 'calf_wall_slow', 'calf_load', 'calf_1leg'] },
-    row: { name: 'Rows', group: 'back', rungs: ['row_prone_w', 'row_superman', 'row_towel', 'row_door', 'row_table', 'row_band', 'row_band_high', 'row_db', 'row_chair', 'row_slow', 'row_pause', 'row_half', 'row_chair_half'] },
+    row: { name: 'Rows', group: 'back', rungs: ['row_prone_w', 'row_superman', 'row_towel', 'row_door', 'row_door_slow', 'row_table', 'row_band', 'row_band_high', 'row_db', 'row_chair', 'row_slow', 'row_pause', 'row_half', 'row_chair_half'] },
     pull: { name: 'Pull-ups', group: 'back', rungs: ['pull_hang', 'pull_scap', 'pull_neg', 'pull_chin', 'pull_up', 'pull_slow'] },
     rear: { name: 'Rear shoulders', group: 'back', rungs: ['rear_towel', 'rear_band', 'rear_face_band', 'rear_ytw', 'rear_ytw_hold', 'rear_fly', 'rear_high_pull', 'rear_fly_slow', 'rear_fly_pause'] },
     backExt: { name: 'Lower back', group: 'back', accessory: true, rungs: ['back_birddog', 'back_superman', 'back_ext', 'back_ext_pause'] },
@@ -2072,6 +2094,10 @@
     coreRot: { name: 'Rotation', group: 'abs', rungs: ['rot_russian', 'rot_chop', 'rot_russian_up', 'rot_kneel_chop', 'rot_slam', 'rot_toss'] },
     coreSide: { name: 'Side core', group: 'abs', rungs: ['side_knee', 'side_carry', 'side_plank', 'side_march', 'side_star'] },
     finisher: { name: 'Finishers', group: 'conditioning', rungs: ['fin_march', 'fin_step_jacks', 'fin_pulse', 'fin_toss', 'fin_swing', 'fin_climbers', 'fin_squat_thrust', 'fin_jacks', 'fin_slam', 'fin_burpee', 'fin_swing1'] },
+    // 1.15's second exercises for the arms (since: 15, as their moves): hammer curls beside curls
+    // (the forearm and the muscle under the biceps), close-grip push-ups beside overhead extensions.
+    hammer: { name: 'Hammer curls', group: 'biceps', since: 15, rungs: ['curl_hammer', 'curl_hammer_slow'] },
+    triPush: { name: 'Close-grip push-ups', group: 'triceps', since: 15, rungs: ['tri_close_incline', 'tri_close_knee', 'tri_diamond'] },
     // Impact for bones: open only when a plan needs it (alt, src/access.js), gentlest first.
     impact: { name: 'Impact for bones', group: 'impact', alt: true, rungs: ['imp_heel', 'imp_stamp', 'imp_jog'] },
     // Gym pools (gym: true): preference-ordered, not easiest → hardest. The first allowed move is
@@ -2105,9 +2131,26 @@
   }
   // Moves that appear in two ladders keep their first family; hinge borrows the bridges.
   MOVES.hg_bridge.family = 'hinge'; MOVES.hg_bridge1.family = 'hinge';
-  MOVES.curl_1arm.family = 'curl'; MOVES.hammer_1arm.family = 'curl';
+  MOVES.curl_1arm.family = 'curl'; MOVES.hammer_1arm.family = 'curl'; MOVES.tri_oh_one.family = 'triceps';
   // The single-arm version of a curl rung, for the extra lead-side set.
   const ONE_ARM = Object.assign(Object.create(null), { curl_std: 'curl_1arm', curl_slow: 'curl_1arm', curl_half: 'curl_1arm', curl_hammer: 'hammer_1arm', curl_band: 'curl_towel' });
+  // 1.15: with a weaker arm, or a weight too light for both hands, the plan's own arm work is one
+  // arm at a time too (src/brain.js oneArm). `two`: both hands on one weight, so each arm lifts half.
+  const ONE_ARM15 = Object.assign(Object.create(null), { curl_std: 'curl_1arm', curl_hammer: 'hammer_1arm', tri_oh: 'tri_oh_one', tri_oh_slow: 'tri_oh1' });
+  MOVES.tri_oh.two = MOVES.tri_oh_slow.two = true;
+  // A move named after a weight follows the kit: with dumbbells and no kettlebell, it's a dumbbell
+  // deadlift. nameOf(m, eq) says it for a kit; a move's own name follows GH.moves.kit, the home kit
+  // the brain last planned for (the person's own, in the app), so every screen says the same.
+  const NAME_BY = { hg_deadlift: { db: 'Dumbbell deadlift' }, rear_high_pull: { db: 'Dumbbell high pull' } };
+  function nameOf(m, eq) {
+    const by = NAME_BY[m.id];
+    const key = by && eq ? loadFor(m, eq) : null;
+    return by ? (key && by[key]) || by.base : m.name;
+  }
+  for (const id of Object.keys(NAME_BY)) {
+    NAME_BY[id].base = MOVES[id].name;
+    Object.defineProperty(MOVES[id], 'name', { enumerable: true, configurable: true, get() { return nameOf(this, GH.moves.kit); } });
+  }
 
   // Warm-ups: `all` is every one (upper body first); the brain picks the ones that suit the day's
   // muscles (mobFor). kb / none are the lists shown with and without a kettlebell.
@@ -2202,5 +2245,5 @@
     return (side === 'R') === (work === 'N');
   }
 
-  GH.moves = { FORMS: F, MOVES, LADDERS, WARMUP, MOBILITY, ONE_ARM, has, allowed, loadFor, rungsFor, forPerson, secPerRep, mirrorFor };
+  GH.moves = { FORMS: F, MOVES, LADDERS, WARMUP, MOBILITY, ONE_ARM, ONE_ARM15, has, allowed, loadFor, rungsFor, forPerson, secPerRep, mirrorFor, nameOf, kit: null };
 })(typeof window !== 'undefined' ? window : globalThis);

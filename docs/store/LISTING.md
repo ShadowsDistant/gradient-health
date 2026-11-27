@@ -19,8 +19,9 @@ WORKOUTS MADE FOR YOU
 • No equipment? A chair, a wall and a towel are enough to start
 • More reps, then more weight, then a harder move as you get stronger
 • Easier days after a short night or a high resting heart rate
-• 296 exercises, and plans that fit your age, your joints and your health
+• 302 exercises, and plans that fit your goals, your weights, your age and your health
 • Or build your own: pick from a list with a picture of every move, or start from Full body, Upper and lower, or Push, pull, legs
+• Share a plan as a short code, and start a friend's plan by typing theirs
 
 SEE EVERY MOVE IN 3D
 • A 3D figure shows each exercise at the right tempo
@@ -45,19 +46,18 @@ Needs Android 8.0 or newer. Health Connect features need Android 14 or newer.
 
 ## What's new (500 characters at most)
 
-Paste this into the What's new field with each update. This is 1.14.0's. Each GitHub release carries
+Paste this into the What's new field with each update. This is 1.15.0's. Each GitHub release carries
 its own version's text at the end of its What's new, under "Short version, for a store's What's new
 field". It comes from the `store` text of the version's entry in `src/data/changelog.js`
 (`node scripts/release-notes.mjs --store` prints it).
 
 ```text
-• Pick exercises from a list with pictures, suggestions and filters
-• Search by name, muscle or kit, even with a typo
-• See each muscle's sets for the week, and tap a gap to fill it
-• Start a plan from Full body, Upper and lower, or Push, pull, legs
-• Settings opens on a short list, with a page for each part and search
-• A glowing sun on your warm-up, and an icon for each muscle
-• Quicker pages and sheets, and pop-ups that keep out of your way
+• Share a plan as a short code, and add one by typing or pasting it
+• Plans built around your goals and your weights, your weaker arm first
+• An optional question about how you eat, with one small step to try
+• Plans the AI builds follow rules for you and say why they're yours
+• Smoother motion in the workout player, with numbers that roll
+• A touch-up of every screen, and text that fits at large sizes
 ```
 
 ## Images

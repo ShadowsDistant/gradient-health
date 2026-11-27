@@ -7,7 +7,7 @@ import { load, root, check, section, done } from './lib.mjs';
 
 const ls = new Map();
 globalThis.localStorage = { getItem: (k) => (ls.has(k) ? ls.get(k) : null), setItem: (k, v) => ls.set(k, String(v)), removeItem: (k) => ls.delete(k) };
-const GH = load('src/data/moves.js', 'src/data/moves-access.js', 'src/data/science.js', 'src/engine/pose.js', 'src/brain.js', 'src/access.js', 'src/insights.js', 'src/body.js', 'src/health.js', 'src/store.js', 'src/coach.js', 'src/chats.js', 'src/tailor.js', 'src/devicecoach.js', 'src/ui/embeds.js');
+const GH = load('src/data/moves.js', 'src/data/moves-access.js', 'src/data/science.js', 'src/engine/pose.js', 'src/brain.js', 'src/access.js', 'src/insights.js', 'src/body.js', 'src/health.js', 'src/store.js', 'src/coach.js', 'src/chats.js', 'src/tailor.js', 'src/person.js', 'src/devicecoach.js', 'src/ui/embeds.js');
 const bundle = await build({ entryPoints: [join(root, 'src/ai.js')], bundle: true, write: false, format: 'iife', platform: 'browser', target: ['es2022'], logLevel: 'silent' });
 new Function(bundle.outputFiles[0].text)();
 const B = GH.brain, C = GH.coach, H = GH.health, SC = GH.science;
@@ -123,6 +123,8 @@ section('Claude app hand-off');
 const prompt = C.claudePrompt(S, D0, 'What should I focus on?');
 check('the question and the data summary are both there', /My question: What should I focus on\?/.test(prompt) && /LAST 28 DAYS/.test(prompt));
 check('no name, dates or day numbers', !/Sam/.test(prompt) && !/\d{4}-\d{2}-\d{2}/.test(prompt) && !prompt.includes(String(D0)) && !/\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\b/.test(prompt));
+// (Who this is, src/person.js: the facts 1.15 added go to Claude only once the newer list is allowed.)
+check('who this is, as Claude\'s summary has it, and nothing they haven\'t allowed', /PERSON\n- Age range: /.test(prompt) && /- Goals, most important first: /.test(prompt) && /- Equipment: /.test(prompt) && !/Their weights|Eating, in their own words|Last 4 weeks:|Their choices|weeks with the app/.test(prompt));
 
 section('How it works');
 check('every rule has what it does, why, a level and research', SC.RULES.every((r) => r.does && r.why && SC.LEVELS[r.level] && r.refs.length && r.refs.every((id) => SC.REFS[id])));
@@ -146,7 +148,10 @@ const restCheck = (supersets) => {
   const big = solo.filter((it) => BIG.includes(it.fam));
   const small = solo.filter((it) => !BIG.includes(it.fam));
   // (1.13: a session with time to spare gives what's done on its own at 60 s 90 s instead.)
-  return { ok: big.every((it) => it.rest === 90) && small.every((it) => it.rest === 60 || it.rest === 90) && items.filter((it) => it.superset).every((it) => it.rest === 60), big: big.length, small: small.map((it) => `${it.fam}@${it.rest}`), paired: items.filter((it) => it.superset).length };
+  // (1.15: 30 s after an arm exercise done one arm at a time, where each arm also rests through
+  // the other's set: 30 to 60 s is enough for light sets of one joint, Fink et al. 2017.)
+  const oneArm = (it) => it.rest === 30 && GH.moves.MOVES[it.moveId].uni && ['biceps', 'triceps'].includes(it.group);
+  return { ok: big.every((it) => it.rest === 90) && small.every((it) => it.rest === 60 || it.rest === 90 || oneArm(it)) && items.filter((it) => it.superset).every((it) => it.rest === 60), big: big.length, small: small.map((it) => `${it.fam}@${it.rest}`), paired: items.filter((it) => it.superset).length };
 };
 const rc1 = restCheck(false), rc2 = restCheck(true);
 check('the rest rule matches the brain: 90 s after big moves on their own, 60 s after small ones (90 with time to spare)', rc1.ok && rc1.big > 0 && ['push', 'press', 'row', 'squat', 'hinge', 'pull', 'chestDb'].every((f) => B.restFor(person(), f) === 90) && ['curl', 'raise', 'calf'].every((f) => B.restFor(person(), f) === 60), rc1);
@@ -186,7 +191,9 @@ check('marked as written when Health Connect confirms', !!S.health.written[rec.i
 S.health.write = false;
 check('not sent when switched off', !H.writeWorkout(S, log) && sent.length === 1);
 S.health.write = true;
-check('catch-up skips what was already written', H.writeRecent(S, 60) === S.log.filter((l) => l.type === 'workout').length - 1);
+// The window counts back from today, and the fixture's workouts sit at a fixed date, so it must reach them.
+const since = Math.ceil((Date.now() - D0 * B.DAY_MS) / B.DAY_MS) + 60;
+check('catch-up skips what was already written', H.writeRecent(S, since) === S.log.filter((l) => l.type === 'workout').length - 1);
 globalThis.AndroidBridge = { hcCanWrite: () => false, hcWriteWorkout: () => sent.push('x') };
 check('not sent without the permission', !H.writeWorkout(S, log));
 delete globalThis.AndroidBridge;
@@ -230,6 +237,12 @@ section('Plans for different bodies');
   check('and explains a flare day', flare.flare && C.decisions(S3, D0, flare)[0].rule === 'arthritis');
   const brief = GH.deviceCoach.brief(S3, D0);
   check('the on-device coach knows what the plan works around; Claude\'s summary doesn\'t', (/adapted for age band 65 and over; planned around balance and rheumatoid arthritis/.test(brief)) && !/arthritis|balance/i.test(GH.ai.summary ? GH.ai.summary(S3, D0) : ''), brief);
+  // The short form of who this is (src/person.js) is in the brief too. (Light, as the plan engine
+  // judges a weight: 10 lb is about right for a 70 kg man's curls, and light for rows and presses.)
+  const S4 = B.newState({ goals: ['arms'], age: 30, weightKg: 70, heightCm: 178, units: 'lb', equipment: { db: [10] }, eats: { protein: 'low', produce: 'most' } }, null, D0);
+  const brief4 = GH.deviceCoach.brief(S4, D0);
+  check('and what their weights mean for them and how they eat, said briefly', /Their weights: 10 lb is light for rows, chest presses and overhead presses\./.test(brief4) && !/about right for/.test(brief4) && /Eating, in their own words: not much protein, plenty of fruit and veg\./.test(brief4) && !/Say nothing about losing weight/.test(brief4) && !/Last 4 weeks|Moving up/.test(brief4), brief4);
+  check('its rules rule out diets, medicine, supplements and a target weight', /don't write new programs, diets or meal plans, and never suggest medicine, supplements, a target weight or cutting out a food/.test(GH.deviceCoach.RULES));
 }
 
 section('Suggestions you apply');
@@ -248,6 +261,40 @@ check('actions are checked before they apply', !C.validAction(S, { kind: 'minute
 const nd = C.apply(S, { id: 'x', action: { kind: 'deload', label: 'x' } }, D0);
 check('a lighter week can be planned once', nd && !C.validAction(S, { kind: 'deload' }, D0));
 check('a dismissed suggestion stays hidden for two weeks', (() => { const all = C.suggestions(S, D0); if (!all.length) return true; C.dismiss(S, all[0].id, D0); return !C.suggestions(S, D0 + 13).some((x) => x.id === all[0].id) && (C.suggestions(S, D0 + 15).some((x) => x.id === all[0].id) || true); })());
+
+section('1.15: a smaller plan on offer, and eating');
+{
+  // Week 1 done in full, then one workout of four in each of the next two weeks.
+  const S5 = person({ workouts: [D0 - 21, D0 - 20, D0 - 18, D0 - 17, D0 - 14, D0 - 7] });
+  const sg = C.suggestions(S5, D0);
+  const fewer = sg.find((x) => x.action && x.action.kind === 'days');
+  check('workouts missed two weeks running: the coach offers one day fewer, in plain words', fewer && fewer.action.value === 3 && /You did 2 of 8 planned workouts in the last two weeks/.test(fewer.body) && !/[—–!]/.test(fewer.title + fewer.body), sg.map((x) => x.title));
+  const was = B.weekdaysFor(S5.profile);
+  const line = fewer && C.apply(S5, fewer, D0);
+  const now = B.weekdaysFor(S5.profile);
+  check('applying it plans three days: the ones trained before, without the day missed most', line && S5.profile.days === 3 && now.length === 3 && now.every((d) => was.includes(d)) && !now.includes(fewer.action.drop), { was, now, line });
+  check('this action only ever makes the week smaller, and never under two days', !C.validAction(S5, { kind: 'days', value: 5 }, D0) && !C.validAction(S5, { kind: 'days', value: 1 }, D0) && C.validAction(S5, { kind: 'days', value: 2 }, D0));
+  const S6 = person({ workouts: [D0 - 21, D0 - 20, D0 - 18, D0 - 17, D0 - 14, D0 - 13, D0 - 11, D0 - 10, D0 - 7, D0 - 6, D0 - 4, D0 - 3] });
+  check('with every workout done, no smaller plan is offered', !C.suggestions(S6, D0).some((x) => x.action && x.action.kind === 'days'));
+  // At two days a week, shorter sessions are offered instead.
+  const S7 = B.newState({ goals: ['abs', 'arms'], age: 30, days: 2, minutes: 30, equipment: { db: [8] } }, null, D0 - 21);
+  for (const ws of [D0 - 14, D0 - 7]) B.calendar(S7, ws);
+  const s7 = C.suggestions(S7, D0).find((x) => /^short-/.test(x.id));
+  check('at two days a week: shorter sessions instead', s7 && s7.action.kind === 'minutes' && s7.action.value === 20 && C.validAction(S7, s7.action, D0), C.suggestions(S7, D0).map((x) => x.id));
+  // Eating: the answer brings one small step each, offered until dismissed, then never again.
+  const eat = (p) => { const S8 = person(); Object.assign(S8.profile, { age: 24, heightCm: 183 }, p); return S8; };
+  const S8 = eat({ eats: { protein: 'low', produce: 'low' } });
+  const ids = (S, d = D0) => C.suggestions(S, d).filter((x) => /^eat-/.test(x.id)).map((x) => x.id);
+  const texts = C.suggestions(S8, D0).filter((x) => /^eat-/.test(x.id));
+  check('little protein and fruit: one more protein serving, eating enough (lean, wants size) and a piece of fruit', ids(S8).join() === 'eat-protein,eat-enough,eat-fruit', ids(S8));
+  check('in plain, honest words: 20 to 30 g, no promise, fruit for health and not for muscle', /about 20 to 30 g/.test(texts[0].body) && /doesn't build muscle by itself/.test(texts[2].body) && texts.every((x) => !/[—–!]/.test(x.title + x.body) && !/guarantee|will (grow|gain|build)/i.test(x.body)), texts.map((x) => x.body));
+  C.dismiss(S8, 'eat-protein', D0);
+  check('dismissed, a step stays away for good (the others stay until they are)', ids(S8, D0 + 60).join() === 'eat-enough,eat-fruit', ids(S8, D0 + 60));
+  check('enough protein, or no answer: nothing about protein', !ids(eat({ eats: { protein: 'most', produce: 'most' } })).length && !ids(eat({})).length);
+  check('the food log can stand in for the answer', ids(eat({ eats: { protein: null, produce: null, logged: 'low' } })).includes('eat-protein') && /food log/.test(C.suggestions(eat({ eats: { protein: null, produce: null, logged: 'low' } }), D0).find((x) => x.id === 'eat-protein').body));
+  check('under 18: none of it', !ids(eat({ age: 16, eats: { protein: 'low', produce: 'low' } })).length);
+  check('not lean, or losing weight on purpose: no "eat enough"', !ids(eat({ weightKg: 90, eats: { protein: 'low', produce: null } })).includes('eat-enough') && !ids(eat({ weightGoal: 'lose', eats: { protein: 'low', produce: null } })).includes('eat-enough'));
+}
 
 section('Weekly sets follow progress and recovery');
 {
@@ -359,6 +406,8 @@ section('The on-device coach keeps to the app\'s numbers');
   const q = 'Am I doing enough steps?';
   const cut = DC.finish(walker, D0, q, 'Yes, you walk 7675 steps a day, which is great for your health. That puts you in the top 12% of people.', given, 'Yes,');
   check('a made-up line goes and a note says so', cut.cut === 1 && !/12%/.test(cut.text) && /7675/.test(cut.text) && /Left out a line/.test(cut.note), cut);
+  const diet = DC.finish(walker, D0, q, 'Yes, you walk 7675 steps a day, above what most studies link to better health. Eat in a calorie deficit and take a fat burner too.', given, 'Yes,');
+  check('a line of diet or supplement advice goes too, and the note says why', diet.cut === 1 && !/deficit|burner/.test(diet.text) && /7675/.test(diet.text) && /Left out advice on diet or medicine\. That's for a doctor or dietitian\./.test(diet.note), diet);
   const bad = DC.finish(walker, D0, q, 'Yes, 12,000 steps.', given, 'Yes,');
   check('if too little is left, the app\'s own answer stands in', bad.replaced && bad.text === C.ask(walker, D0, q).text && /didn't match your numbers/.test(bad.note), bad);
   const none = DC.finish(walker, D0, q, 'Yes,', given, 'Yes,');

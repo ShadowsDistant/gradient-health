@@ -12,6 +12,7 @@ import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { root, check, section, done } from './lib.mjs';
 import { seedBridge, seedState } from './fixtures.mjs';
+import { seedActivities } from './actfixture.mjs';
 
 const require = createRequire(import.meta.url);
 let chromium;
@@ -641,8 +642,9 @@ const restOn = async () => {
   // before the click returns, so the first frame after it has it) with the set's own haptic.
   return page.evaluate(() => {
     const U = window.GH.ui, a = U.S.active;
-    const asks = (st) => st.kind === 'set' && !st.item.timed && st.askRir && st.rest;
-    const k = a.steps.findIndex((st, i) => i > a.idx && asks(st));
+    // (Not the workout's last set: Up next needs a set after it, and 1.15's sessions are shorter.)
+    const asks = (st, i) => st.kind === 'set' && !st.item.timed && st.askRir && st.rest && a.steps.some((x, j) => j > i && x.kind === 'set');
+    const k = a.steps.findIndex((st, i) => i > a.idx && asks(st, i));
     a.idx = k >= 0 ? k : a.steps.findIndex(asks);
     U.openPlayer();
     window.__haptics.length = 0;
@@ -866,6 +868,152 @@ const ring = await page.evaluate(() => {
 });
 check('a toast\'s close keeps its countdown ring at its own size, and reaches 44 px with its ::after', ring && ring.countdown && ring.ring === '0px' && ring.hit != null && ring.hit <= ring.want + 0.5, JSON.stringify(ring));
 await page.evaluate(() => { for (const t of document.querySelectorAll('.rf-toast')) t.remove(); });
+
+/* ------------------------------------------------------------------ 1.15's touch-up */
+section('1.15: type, text buttons, notes and empty states');
+// A plain button's own type applies. The reset that gives buttons the page's font outweighed any one
+// class, so a move's name on Today drew lighter than the warm-up row above it, and a Why chip and the
+// chat's engine pill at the page's 16 px.
+await page.evaluate(() => { const U = window.GH.ui; U.closeSheets(); while (U.back()) { /* back to the tab */ } U.go('today'); });
+await settle(900);
+const exType = await page.evaluate(() => {
+  const b = document.querySelector('#screen button.ex-name'), w = document.querySelector('#screen .ex-muted .ex-name');
+  return b && w ? { move: getComputedStyle(b).fontWeight, warm: getComputedStyle(w).fontWeight } : null;
+});
+check('a move\'s name on Today keeps its weight, heavier than the warm-up row', exType && Number(exType.move) >= 550 && Number(exType.move) > Number(exType.warm), JSON.stringify(exType));
+// The workout's muscles: a dot stays with the name before it (a new person's line wrapped to "· Abs").
+const groupsLine = await page.evaluate(() => { const p = document.querySelector('#screen .session-groups'); return p ? p.textContent : null; });
+check('Today\'s muscles keep each dot with the name before it', groupsLine && groupsLine.includes('·') && !/ ·/.test(groupsLine), groupsLine);
+await page.evaluate(() => window.GH.ui.open('coach'));
+await settle(900);
+const whyChip = await page.evaluate(() => { const c = document.querySelector('#screen .why-chip'); return c ? getComputedStyle(c).fontSize : null; });
+check('a Why chip is 12 px', whyChip === null || whyChip === '12px', whyChip);
+check('Today\'s coach card keeps "See all" on one line', await page.evaluate(() => { const U = window.GH.ui; U.back(); const m = document.querySelector('#screen .co-more'); return !m || getComputedStyle(m).whiteSpace === 'nowrap'; }));
+await settle(700);
+// A sheet has one tinted button: the chat's Chats, a way to the list, is plain glass beside Send.
+await page.evaluate(() => window.GH.ui.act.askCoach());
+await settle(1500);
+const chatBtns = await page.evaluate(() => {
+  const d = document.querySelector('dialog.chat-sheet[open]');
+  if (!d) return null;
+  const pill = d.querySelector('.chat-pill');
+  return { tinted: [...d.querySelectorAll('.rf-btn[data-variant="tinted"]')].map((b) => b.getAttribute('data-act') || b.textContent.trim()), chats: !!d.querySelector('.rf-sheet-header [data-act="chatList"]'), pill: pill ? getComputedStyle(pill).fontSize : null };
+});
+check('the chat has Chats in its header, and one tinted button at most', chatBtns && chatBtns.chats && chatBtns.tinted.length <= 1 && !chatBtns.tinted.includes('chatList'), JSON.stringify(chatBtns));
+check('the chat\'s engine pill is 14 px', chatBtns && (chatBtns.pill === null || chatBtns.pill === '14px'), chatBtns && chatBtns.pill);
+await page.evaluate(() => window.GH.ui.closeSheets());
+await settle(700);
+// A text button with words in a sheet is the accent, as on a page (it drew in the label's ink and
+// read as a bold label); the sheet's close button, an icon alone, keeps the label's.
+await page.evaluate(() => { const U = window.GH.ui; U.go('health'); U.metricSheet('rhr'); });
+await settle(1400);
+const sheetLink = await page.evaluate(() => {
+  const d = document.querySelector('dialog.ms-sheet[open]');
+  if (!d) return null;
+  const probe = document.createElement('span'); probe.style.color = 'var(--accent)'; d.querySelector('.rf-sheet-body').appendChild(probe);
+  const accent = getComputedStyle(probe).color; probe.remove();
+  const more = d.querySelector('.ms-more'), close = d.querySelector('[data-sheet-close]');
+  const cell = [...d.querySelectorAll('.ms-stat')].find((c) => c.querySelector('.ms-stat-k').textContent === 'Change');
+  const v = cell && cell.querySelector('.ms-stat-v');
+  return { accent, more: more ? getComputedStyle(more).color : null, close: getComputedStyle(close).color, change: v ? v.textContent : null, unit: v ? !!v.querySelector('small') || !/[a-z]/i.test(v.textContent) : null };
+});
+check('"Show all" in a number\'s sheet is the accent; Close is not', sheetLink && sheetLink.more === sheetLink.accent && sheetLink.close !== sheetLink.accent, JSON.stringify(sheetLink));
+check('Change is drawn as its neighbours are: a small unit, and a minus sign rather than a hyphen', sheetLink && sheetLink.unit === true && !/^-/.test(sheetLink.change || ''), sheetLink && sheetLink.change);
+await page.evaluate(() => window.GH.ui.closeSheets());
+await settle(700);
+// Health's Sources: each row has its tile, so every title starts on one edge; the note under the list
+// starts on the list's inset, as a list's footer does.
+const src = await page.evaluate(() => {
+  const l = document.querySelector('#screen .hl-src'), n = document.querySelector('#screen .hl-src-note');
+  if (!l || !n) return null;
+  const rows = [...l.querySelectorAll(':scope > li > .rf-list-row')];
+  const lefts = [...new Set(rows.map((r) => Math.round(r.querySelector('.rf-list-title').getBoundingClientRect().left)))];
+  const range = document.createRange(); range.selectNodeContents(n);
+  return { rows: rows.length, tiles: rows.filter((r) => r.querySelector(':scope > .rf-list-icon')).length, lefts, note: Math.round(range.getBoundingClientRect().left - l.getBoundingClientRect().left) };
+});
+check('every row of Sources has a tile, and their titles share an edge', src && src.rows >= 2 && src.tiles === src.rows && src.lefts.length === 1, JSON.stringify(src));
+check('the note under Sources starts on the list\'s inset (16 px in)', src && Math.abs(src.note - 16) <= 1, src && src.note);
+// Progress: the heatmap's legend never leaves one item alone on a line.
+await tab('progress');
+await settle(900);
+const legend = await page.evaluate(() => {
+  const l = document.querySelector('#screen .hm-legend');
+  if (!l) return null;
+  const tops = [...l.children].map((c) => Math.round(c.getBoundingClientRect().top));
+  return [...new Set(tops)].map((t) => tops.filter((x) => x === t).length);
+});
+check('the heatmap\'s legend has no line with a single item', legend && legend.every((n) => n >= 2), JSON.stringify(legend));
+// Most improved: each move and its change start a line of their own (run together with dots, a line
+// ended on "Barbell back squat" and the next began with its numbers).
+const mi = await page.evaluate(() => [...document.querySelectorAll('#screen .mi-row .rf-list-sub')].map((s) => {
+  const lines = [...s.querySelectorAll('.mi-line')], left = Math.round(s.getBoundingClientRect().left);
+  return { n: lines.length, edge: lines.every((l) => Math.round(l.getClientRects()[0].left) === left) };
+}));
+check('Most improved: each move starts a line of its own', mi.some((r) => r.n >= 2) && mi.every((r) => r.edge), JSON.stringify(mi));
+// Your answers: a list in one sentence-case line ("Visible abs, Bigger arms, Bigger chest" before).
+const goalsLine = await page.evaluate(() => window.GH.ui.answerSummary('goals', { goals: ['abs', 'arms', 'legs'] }));
+check('Your answers list goals in sentence case', goalsLine === 'Visible abs, bigger arms, legs and glutes', goalsLine);
+// Activities with nothing recorded: a picture, what's missing and the way to start (not saved).
+await page.evaluate(() => { const GH = window.GH, U = GH.ui; U.__acts = U.S.activities; U.S.activities = []; U.open('activities'); });
+await settle(900);
+const empty = await page.evaluate(() => { const c = document.querySelector('#screen .gh-empty'); return c ? { art: !!c.querySelector('svg'), head: (c.querySelector('.t-headline') || {}).textContent, go: !!c.querySelector('[data-act="actStart"]') } : null; });
+check('Activities, empty: a picture, "No activities yet" and the way to start', empty && empty.art && empty.head === 'No activities yet' && empty.go, JSON.stringify(empty));
+await page.evaluate(() => { const U = window.GH.ui; U.S.activities = U.__acts; delete U.__acts; while (U.back()) { /* back to the tab */ } });
+await settle(700);
+// Today without workouts: the steps ring holds its number (at 44 px "7,145" ran out over both sides).
+await page.evaluate(() => {
+  const U = window.GH.ui, d = U.S.health.days || (U.S.health.days = {}), day = U.today();
+  U.__steps = d[day] && d[day].steps;
+  d[day] = Object.assign({}, d[day], { steps: 12345 }); // (five figures and a comma: the widest it gets)
+  U.S.profile.workouts = false; U.go('today'); U.render();
+});
+await settle(900);
+const ringFit = await page.evaluate(() => {
+  const r = document.querySelector('#screen .day-card .rf-ring'), n = r && r.querySelector('.fd-ring-n');
+  if (!n) return null;
+  const range = document.createRange(); range.selectNodeContents(n);
+  const a = r.getBoundingClientRect(), b = range.getBoundingClientRect();
+  return { ring: Math.round(a.width), text: Math.round(b.width), shown: n.textContent, inside: b.left >= a.left + 6 && b.right <= a.right - 6 };
+});
+check('Today\'s steps ring holds its number', ringFit && ringFit.shown === '12,345' && ringFit.inside, JSON.stringify(ringFit));
+// Its lines keep a hyphenated word whole (at 360 px "(7-" ended one line and "day average)" began the next).
+const avgWhole = await page.evaluate(() => { const p = [...document.querySelectorAll('#screen .day-lines p')].find((e) => /7-day/.test(e.textContent)); const w = p && p.querySelector('.gh-nw'); return p ? !!w && /7-day/.test(w.textContent) && getComputedStyle(w).whiteSpace === 'nowrap' : null; });
+check('Today without workouts: "7-day average" keeps "7-day" whole', avgWhole === true, String(avgWhole));
+await page.evaluate(() => { const U = window.GH.ui, d = U.S.health.days[U.today()]; if (U.__steps == null) delete d.steps; else d.steps = U.__steps; delete U.__steps; U.S.profile.workouts = true; U.render(); });
+await settle(700);
+// Coach notes: an arrow in Recent changes keeps to the words on both sides (a line began "→ 20 reps").
+await page.evaluate(() => window.GH.ui.open('coach'));
+await settle(900);
+const coachArrows = await page.evaluate(() => [...document.querySelectorAll('#screen .co-time li > span:first-child')].map((s) => s.textContent).filter((t) => t.includes('→')));
+check('Coach notes: an arrow in Recent changes stays with the words on both sides', coachArrows.length > 0 && coachArrows.every((t) => /\u00a0→\u00a0/.test(t)), JSON.stringify(coachArrows.slice(0, 2)));
+// Personal records: "Longest" keeps to the activity's name (at 360 px, "Longest / hike by time").
+await page.evaluate(seedActivities);
+await page.evaluate(() => { const U = window.GH.ui; while (U.back()) { /* back to the tab */ } U.open('activities'); });
+await settle(900);
+const byTime = await page.evaluate(() => [...document.querySelectorAll('#screen .rf-list-title')].map((t) => t.textContent).filter((t) => /by time$/.test(t)));
+check('Personal records: "Longest" keeps to the activity\'s name', byTime.length > 0 && byTime.every((t) => /^Longest\u00a0/.test(t)), JSON.stringify(byTime));
+// With large text a field takes the width it's given. An input is 20 characters wide on its own, and
+// at 130% that pushed a plan's Name, and set-up's row to add a weight (with the weights above it),
+// past the edge. (Last: the text stays large until the page starts again.)
+const textAt130 = () => {
+  const els = [...document.querySelectorAll('body *')].filter((e) => !e.closest('svg'));
+  const sizes = els.map((e) => parseFloat(getComputedStyle(e).fontSize));
+  els.forEach((e, i) => { if (sizes[i]) e.style.setProperty('font-size', `${sizes[i] * 1.3}px`, 'important'); });
+};
+const past = (sel) => { const el = document.querySelector(sel); return el ? [...el.querySelectorAll('.rf-field-control, .ob-add, .rf-chip')].filter((e) => e.getBoundingClientRect().right > innerWidth + 1).map((e) => e.textContent.trim().slice(0, 16) || e.className) : null; };
+await page.evaluate(() => window.GH.ui.editAnswers('equipment'));
+await settle(900);
+await page.evaluate(textAt130);
+const eqPast = await page.evaluate(past, '.onboard:not([hidden]):has(.ob-add)');
+check('at 130% text, the equipment\'s weights and the row to add one stay on the page', eqPast && eqPast.length === 0, JSON.stringify(eqPast));
+await page.reload();
+await page.waitForSelector('#screen[data-view]');
+await page.evaluate(() => window.GH.lazy('planUi'));
+await page.evaluate(() => { const U = window.GH.ui; U.open('plans'); U.act.cpNew(); U.act.cpNewCopy(); });
+await settle(1500);
+await page.evaluate(textAt130);
+const nameFit = await page.evaluate(() => { const c = document.querySelector('#screen .cp-names .rf-field-control'), card = c && c.closest('.card'); return c ? { right: Math.round(c.getBoundingClientRect().right), inset: Math.round(card.getBoundingClientRect().right - parseFloat(getComputedStyle(card).paddingRight)) } : null; });
+check('at 130% text, a plan\'s Name field ends on its card\'s inset', nameFit && nameFit.right <= nameFit.inset, JSON.stringify(nameFit));
 
 section('Console');
 check('no console errors', errors.length === 0, errors.join(' | '));
